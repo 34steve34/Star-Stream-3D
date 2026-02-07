@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - Screen Space</title>
+    <title>Star Stream 3D - Screen Space V3</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -16,7 +16,7 @@
 </head>
 <body>
     <div id="debug">Waiting for Sensors...</div>
-    <div id="versionBadge">VER: SCREEN-SPACE</div>
+    <div id="versionBadge">VER: SCREEN-SPACE-V3</div>
     <canvas id="overlay"></canvas>
     <div id="ui">
         <button id="startBtn">START (HOLD LANDSCAPE)</button>
@@ -62,7 +62,6 @@
 
             createStars();
             spawnThreat(0, 0, 300);
-            spawnThreat(80, 40, 300);
 
             window.addEventListener('resize', onWindowResize);
             animate();
@@ -109,33 +108,36 @@
         function onDeviceMove(e) {
             if (!isInitialized) return;
 
-            // Beta is side-to-side (Yaw in this case)
-            // Gamma is forward-back (Pitch in this case)
             let pitchDiff = e.gamma - phoneZero.gamma;
             let yawDiff = e.beta - phoneZero.beta;
 
-            const sens = 0.002; 
-            const deadzone = 2.0;
+            // Sensitivity: Lowered to 0.001 for a smoother, heavier feel
+            const sens = 0.001; 
+            const deadzone = 4.0; // Increased deadzone to prevent jitter
 
             currentVelocity.p = Math.abs(pitchDiff) > deadzone ? pitchDiff * sens : 0;
-            currentVelocity.y = Math.abs(yawDiff) > deadzone ? yawDiff * sens : 0;
+            
+            // Reversing YAW: we multiply by a negative sensitivity
+            currentVelocity.y = Math.abs(yawDiff) > deadzone ? yawDiff * (-sens) : 0;
 
-            debug.innerText = `PITCH: ${pitchDiff.toFixed(1)} | YAW: ${yawDiff.toFixed(1)}`;
+            if (currentVelocity.p === 0 && currentVelocity.y === 0) {
+                debug.style.color = "#0f0";
+                debug.innerText = "CENTERED / STABLE";
+            } else {
+                debug.style.color = "#fff";
+                debug.innerText = `PITCH: ${pitchDiff.toFixed(1)} | YAW: ${yawDiff.toFixed(1)}`;
+            }
         }
 
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized) {
-                // SCREEN-SPACE LOGIC:
-                // We find the world axes relative to the CAMERA.
                 const pitchAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const yawAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
-                // Apply rotation to the ship's world position using these axes
                 ship.rotateOnWorldAxis(pitchAxis, -currentVelocity.p);
                 ship.rotateOnWorldAxis(yawAxis, -currentVelocity.y);
                 
-                // Align starfield
                 starField.rotation.copy(ship.rotation);
             }
             drawGlow();
