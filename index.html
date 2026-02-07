@@ -166,12 +166,21 @@
             onWindowResize();
 
             // Load your ship
-            const loader = new GLTFLoader();
-            loader.load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene;
-                ship.scale.set(0.5, 0.5, 0.5);
-                scene.add(ship);
-            });
+  			loader.load('./assets/ship.glb', (gltf) => {
+			ship = gltf.scene;
+
+			// 1. Shrink the ship (Trial and error usually lands around 0.05 or 0.1)
+			ship.scale.set(0.1, 0.1, 0.1);
+
+			// 2. Push it slightly forward so you aren't "inside" it
+			// Moving it to -5 or -10 puts it comfortably in front of the lens
+			ship.position.set(0, 0, -10); 
+
+			scene.add(ship);
+			console.log("✓ Ship loaded and scaled");
+		}, undefined, (error) => {
+			console.error("✗ Loading error:", error);
+		});
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission().then(response => {
