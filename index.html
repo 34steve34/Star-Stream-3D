@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - Landscape Prototype</title>
+    <title>Star Stream 3D - Velocity Control</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: white; text-align: center; width: 100%; }
-        button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: white; text-align: center; width: 100%; z-index: 10; }
+        button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        #recalibrateBtn { display: none; background: #444; font-size: 12px; padding: 10px 20px; }
     </style>
 </head>
 <body>
     <canvas id="overlay"></canvas>
     <div id="ui">
-        <button id="startBtn">INITIALIZE LANDSCAPE COCKPIT</button>
+        <button id="startBtn">INITIALIZE COCKPIT</button>
+        <button id="recalibrateBtn">RECALIBRATE NEUTRAL</button>
     </div>
 
     <script type="importmap">
@@ -32,8 +34,14 @@
 
         let scene, camera, renderer, ship, starField;
         let threats = [];
+        let phoneZero = { alpha: 0, beta: 0, gamma: 0 };
+        let currentMotion = { pitch: 0, yaw: 0, roll: 0 };
+        let isInitialized = false;
+
         const overlay = document.getElementById('overlay');
         const ctx = overlay.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const recalibrateBtn = document.getElementById('recalibrateBtn');
 
         function init() {
             scene = new THREE.Scene();
@@ -45,17 +53,14 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
-            scene.add(ambient);
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(5, 10, 7);
             scene.add(sun);
 
             createStars();
-            
-            // Spawn threats
-            spawnThreat(0, 5, -50);   // Forward target
-            spawnThreat(50, 50, 300); // Behind (glow)
+            spawnThreat(0, 5, -50);   // Target in front
+            spawnThreat(50, 50, 300); // Target behind (glow)
 
             window.addEventListener('resize', onWindowResize);
             animate();
@@ -102,22 +107,38 @@
         }
 
         function onDeviceMove(e) {
-            if (!ship) return;
+            if (!isInitialized) return;
 
-            // LANDSCAPE FIX: Adjusting for 90-degree screen rotation
-            // We use Euler order 'YXZ' which is generally more stable for mobile sensors
-            const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0; 
-            const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;   
-            const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0; 
+            // Velocity Logic: Calculate distance from Neutral
+            const deadzone = 4; // Degrees of "play" before rotation starts
+            let dPitch = e.beta - phoneZero.beta;
+            let dYaw = e.alpha - phoneZero.alpha;
+            let dRoll = e.gamma - phoneZero.gamma;
 
-            // Re-mapping for Landscape orientation
-            // Rotating the ship to point its nose (Z-axis) based on phone tilt
-            ship.rotation.set(beta, alpha, -gamma, 'YXZ');
-            starField.rotation.set(-beta, -alpha, gamma, 'YXZ');
+            // Handle the 360/0 degree flip for Yaw
+            if (dYaw > 180) dYaw -= 360;
+            if (dYaw < -180) dYaw += 360;
+
+            // Sensitivity: adjust this to change max turn speed
+            const sens = 0.0015; 
+            currentMotion.pitch = Math.abs(dPitch) > deadzone ? dPitch * sens : 0;
+            currentMotion.yaw = Math.abs(dYaw) > deadzone ? dYaw * sens : 0;
+            currentMotion.roll = Math.abs(dRoll) > deadzone ? dRoll * sens : 0;
         }
 
         function animate() {
             requestAnimationFrame(animate);
+
+            if (ship && isInitialized) {
+                // Apply rotation incrementally (Flight Stick feel)
+                ship.rotation.x += currentMotion.pitch;
+                ship.rotation.y += currentMotion.yaw;
+                ship.rotation.z -= currentMotion.roll;
+
+                // Lock stars to ship rotation to simulate movement
+                starField.rotation.copy(ship.rotation);
+            }
+
             drawGlow();
             renderer.render(scene, camera);
         }
@@ -130,8 +151,17 @@
             overlay.height = window.innerHeight;
         }
 
-        document.getElementById('startBtn').addEventListener('click', () => {
-            document.getElementById('ui').style.display = 'none';
+        // Calibration logic
+        function setNeutral(e) {
+            phoneZero = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
+            isInitialized = true;
+            window.removeEventListener('deviceorientation', setNeutral);
+            window.addEventListener('deviceorientation', onDeviceMove);
+            recalibrateBtn.style.display = 'inline-block';
+        }
+
+        startBtn.addEventListener('click', () => {
+            startBtn.style.display = 'none';
             init();
             onWindowResize();
 
@@ -146,20 +176,23 @@
                 ship.add(rawShip);
                 scene.add(ship);
 
-                // SCALE: Increased to 3x (0.45)
                 ship.scale.set(0.45, 0.45, 0.45); 
-                // POSITION: Closer to camera for better visibility
                 ship.position.set(0, 0, -10);      
-                
             });
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission().then(res => {
-                    if (res == 'granted') window.addEventListener('deviceorientation', onDeviceMove);
+                    if (res == 'granted') window.addEventListener('deviceorientation', setNeutral);
                 });
             } else {
-                window.addEventListener('deviceorientation', onDeviceMove);
+                window.addEventListener('deviceorientation', setNeutral);
             }
+        });
+
+        recalibrateBtn.addEventListener('click', () => {
+            isInitialized = false;
+            window.removeEventListener('deviceorientation', onDeviceMove);
+            window.addEventListener('deviceorientation', setNeutral);
         });
     </script>
 </body>
