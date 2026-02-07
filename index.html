@@ -11,10 +11,13 @@
         button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
         #recalibrateBtn { display: none; background: #444; }
         #debug { position: absolute; top: 10px; left: 10px; font-size: 10px; pointer-events: none; }
+        /* Visual Version Badge */
+        #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); padding: 5px; border: 1px solid #0f0; font-size: 12px; }
     </style>
 </head>
 <body>
     <div id="debug">Waiting for Sensors...</div>
+    <div id="versionBadge">VER: LS-V2</div>
     <canvas id="overlay"></canvas>
     <div id="ui">
         <button id="startBtn">START (HOLD LANDSCAPE)</button>
@@ -59,8 +62,8 @@
             scene.add(sun);
 
             createStars();
-            spawnThreat(0, 0, 300); // Dead behind
-            spawnThreat(80, 40, 300); // Periphery behind
+            spawnThreat(0, 0, 300);
+            spawnThreat(80, 40, 300);
 
             window.addEventListener('resize', onWindowResize);
             animate();
@@ -93,10 +96,8 @@
             threats.forEach(t => {
                 if (t.position.z > 0) {
                     let angle = Math.atan2(t.position.y, t.position.x);
-                    // Pushed far off screen so center isn't visible
                     const glowX = w/2 + Math.cos(angle) * (w * 0.8);
                     const glowY = h/2 - Math.sin(angle) * (h * 0.8);
-                    
                     const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, Math.max(w, h) * 0.9);
                     grad.addColorStop(0, `rgba(255, 100, 0, 0.7)`);
                     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -109,16 +110,17 @@
         function onDeviceMove(e) {
             if (!isInitialized) return;
 
-            // Simplified Landscape Mapping:
-            // Beta = Pitch (up/down)
-            // Gamma = Yaw (left/right)
-            let pitchDiff = e.beta - phoneZero.beta;
-            let yawDiff = e.gamma - phoneZero.gamma;
+            // LANDSCAPE MAPPING:
+            // Tilting phone away/toward user affects Gamma
+            // Tilting phone left/right (steering wheel style) affects Beta
+            let pitchDiff = e.gamma - phoneZero.gamma;
+            let yawDiff = e.beta - phoneZero.beta;
 
-            // Increase sensitivity for better feel
-            const sens = 0.0008; 
-            const deadzone = 3;
+            const sens = 0.0015; // Increased slightly for "rate" feel
+            const deadzone = 2.5;
 
+            // Invert pitch if needed: if tilting top AWAY should make ship go UP, 
+            // you may need to multiply by -1 depending on device orientation.
             currentVelocity.p = Math.abs(pitchDiff) > deadzone ? pitchDiff * sens : 0;
             currentVelocity.y = Math.abs(yawDiff) > deadzone ? yawDiff * sens : 0;
 
@@ -128,9 +130,12 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized) {
-                // Apply rotation with a tiny bit of smoothing friction (0.98)
-                ship.rotation.x += currentVelocity.p;
-                ship.rotation.y += currentVelocity.y;
+                // IMPORTANT: We use .rotateX and .rotateY instead of .rotation.x 
+                // to rotate relative to the ship's CURRENT facing direction.
+                ship.rotateX(currentVelocity.p);
+                ship.rotateY(currentVelocity.y);
+                
+                // Keep starfield aligned with ship view
                 starField.rotation.copy(ship.rotation);
             }
             drawGlow();
@@ -146,14 +151,16 @@
         }
 
         function startCalibration() {
-            window.addEventListener('deviceorientation', (e) => {
-                if (!isInitialized) {
-                    phoneZero = { beta: e.beta, gamma: e.gamma };
-                    isInitialized = true;
-                    recalibrateBtn.style.display = 'inline-block';
-                }
-                onDeviceMove(e);
-            }, { once: false });
+            // First event sets the "Zero"
+            const setZero = (e) => {
+                phoneZero = { beta: e.beta, gamma: e.gamma };
+                isInitialized = true;
+                recalibrateBtn.style.display = 'inline-block';
+                window.removeEventListener('deviceorientation', setZero);
+            };
+            
+            window.addEventListener('deviceorientation', setZero);
+            window.addEventListener('deviceorientation', onDeviceMove);
         }
 
         document.getElementById('startBtn').addEventListener('click', function() {
@@ -163,14 +170,11 @@
             
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
-                const box = new THREE.Box3().setFromObject(ship);
-                const center = box.getCenter(new THREE.Vector3());
-                ship.position.sub(center);
                 const group = new THREE.Group();
                 group.add(ship);
                 scene.add(group);
                 ship = group;
-                ship.scale.set(0.6, 0.6, 0.6); // Slightly bigger for visibility
+                ship.scale.set(0.6, 0.6, 0.6);
                 ship.position.set(0, 0, -12);
             });
 
@@ -183,7 +187,10 @@
             }
         });
 
-        recalibrateBtn.addEventListener('click', () => { isInitialized = false; });
+        recalibrateBtn.addEventListener('click', () => { 
+            isInitialized = false; 
+            startCalibration(); // Trigger a new "setZero"
+        });
     </script>
 </body>
 </html>
