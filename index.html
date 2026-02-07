@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - True Bloom</title>
+    <title>Star Stream - Fixed Window Bloom</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -15,7 +15,7 @@
 </head>
 <body>
     <div id="debug">System Standby</div>
-    <div id="versionBadge">VER: TRUE-BLOOM-V1</div>
+    <div id="versionBadge">VER: FIXED-WINDOW-V2</div>
     <canvas id="overlay"></canvas>
     <div id="ui"><button id="startBtn">START MISSION</button></div>
 
@@ -44,7 +44,10 @@
 
         function init() {
             scene = new THREE.Scene();
+            // Camera represents the Player's fixed "Front View"
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 0, 0); // Player is at center
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -58,13 +61,13 @@
             }
             const starGeo = new THREE.BufferGeometry();
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            starField = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1 }));
+            starField = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.5 }));
             scene.add(starField);
 
-            // Threat BEHIND the player at start
-            spawnThreat(0, 0, 150); 
-            // Threat in FRONT
-            spawnThreat(10, 5, -100);
+            // Threat BEHIND the player (+Z)
+            spawnThreat(0, 0, 200); 
+            // Threat MOVING toward the player
+            spawnThreat(-50, 20, 300);
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('touchstart', fireLaser);
@@ -73,20 +76,23 @@
 
         function spawnThreat(x, y, z) {
             const mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(4, 16, 16),
+                new THREE.SphereGeometry(5, 16, 16),
                 new THREE.MeshBasicMaterial({ color: 0xff0000 })
             );
             mesh.position.set(x, y, z);
+            // Give it some movement so we can see the bloom change
+            mesh.userData.velocity = new THREE.Vector3(0, 0, -0.5); 
             scene.add(mesh);
             threats.push(mesh);
         }
 
         function fireLaser() {
             if (!ship) return;
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
             b.position.copy(ship.position);
+            // Bullets fire where the SHIP is pointing
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ship.quaternion);
-            b.userData.velocity = dir.multiplyScalar(8);
+            b.userData.velocity = dir.multiplyScalar(10);
             scene.add(b);
             bullets.push(b);
         }
@@ -97,25 +103,25 @@
             const h = overlay.height;
 
             threats.forEach(t => {
-                // Get threat position relative to the camera
-                const localPos = t.position.clone().applyMatrix4(camera.matrixWorldInverse);
-                
-                // If localPos.z is positive, it's BEHIND the camera/player
-                if (localPos.z > 0) {
-                    // Calculate angle on the screen perimeter
-                    const angle = Math.atan2(localPos.y, localPos.x);
+                // IMPORTANT: We check position relative to WORLD (0,0,0), 
+                // NOT relative to the ship's rotation.
+                // If Z is positive, it is behind the screen.
+                if (t.position.z > 0) {
+                    const angle = Math.atan2(t.position.y, t.position.x);
                     
-                    // The closer localPos is to (0,0,distance), the more "centered" behind it is
-                    // If it's directly behind, we want a full perimeter glow.
-                    const offCenter = Math.sqrt(localPos.x * localPos.x + localPos.y * localPos.y);
-                    const bloomStrength = Math.max(0.2, 1.0 - (offCenter / 100));
+                    // How "centered" is it behind us?
+                    const distanceBehind = t.position.z;
+                    const offCenter = Math.sqrt(t.position.x**2 + t.position.y**2);
+                    
+                    // Directly behind (offCenter close to 0) = Full Perimeter
+                    // Moving to side = Concentrated Bloom
+                    const bloomStrength = Math.min(1.0, 500 / distanceBehind);
 
-                    const glowX = w/2 + Math.cos(angle) * (w * 0.4);
-                    const glowY = h/2 - Math.sin(angle) * (h * 0.4);
+                    const glowX = w/2 + Math.cos(angle) * (w * 0.45);
+                    const glowY = h/2 - Math.sin(angle) * (h * 0.45);
 
-                    // Create the "Orange Bloom"
-                    const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, w * 0.8);
-                    grad.addColorStop(0, `rgba(255, 120, 0, ${0.7 * bloomStrength})`);
+                    const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, w * 0.7);
+                    grad.addColorStop(0, `rgba(255, 120, 0, ${0.8 * bloomStrength})`);
                     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                     
                     ctx.fillStyle = grad;
@@ -136,16 +142,20 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized) {
-                const pAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const yAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                // Ship rotates, but Camera (Player's eyes) stays looking forward
+                const pAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(new THREE.Quaternion());
+                const yAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(new THREE.Quaternion());
                 
                 ship.rotateOnWorldAxis(pAxis, -currentVelocity.p);
                 ship.rotateOnWorldAxis(yAxis, -currentVelocity.y);
-                
-                // Camera follows ship rotation for the "Cockpit" feel
-                camera.quaternion.copy(ship.quaternion);
-                starField.rotation.copy(ship.rotation);
             }
+
+            // Move threats toward the player
+            threats.forEach(t => {
+                t.position.add(t.userData.velocity);
+                // If it passes the player (Z becomes very negative), reset it
+                if (t.position.z < -500) t.position.z = 500;
+            });
 
             bullets.forEach((b, i) => {
                 b.position.add(b.userData.velocity);
@@ -157,7 +167,6 @@
 
             drawBloom();
             renderer.render(scene, camera);
-            document.getElementById('debug').innerText = `Threats: ${threats.length} | Bullets: ${bullets.length}`;
         }
 
         function onWindowResize() {
@@ -175,7 +184,7 @@
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
                 scene.add(ship);
-                ship.position.set(0, 0, -10);
+                ship.position.set(0, 0, -15);
             });
             window.addEventListener('deviceorientation', (e) => {
                 if (!isInitialized) {
