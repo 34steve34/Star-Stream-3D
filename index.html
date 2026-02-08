@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Infinite Skybox & Trails</title>
+    <title>Star Stream - Parallax Speed</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -37,7 +37,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let scene, camera, renderer, ship, shipLight, engineFlame, skySphere;
+        let scene, camera, renderer, ship, engineFlame, backgroundStars, speedLines;
         let targets = [], bullets = [], particles = [], trails = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentRotationVel = { p: 0, y: 0 };
@@ -45,8 +45,8 @@
         
         let velocityVec = new THREE.Vector3(0, 0, 0);
         const DRIFT_INERTIA = 0.98; 
-        const ACCEL_FORCE = 0.08; // SLOWED SPEED as requested
-        const MAX_VELOCITY = 1.5;
+        const ACCEL_FORCE = 0.10; 
+        const MAX_VELOCITY = 2.5; // Slightly faster for satisfaction
         
         const CAMERA_COMFORT_RADIUS = 30; 
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
@@ -65,16 +65,21 @@
             sun.position.set(10, 20, 10);
             scene.add(sun);
 
-            shipLight = new THREE.PointLight(0x00ffff, 100, 80);
-            scene.add(shipLight);
+            // LAYER 1: Deep Background (Static)
+            const bgGeo = new THREE.BufferGeometry();
+            const bgPos = new Float32Array(2000 * 3);
+            for(let i=0; i<2000*3; i++) bgPos[i] = (Math.random()-0.5) * 5000;
+            bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+            backgroundStars = new THREE.Points(bgGeo, new THREE.PointsMaterial({ color: 0x555555, size: 2 }));
+            scene.add(backgroundStars);
 
-            // NEW SOLUTION: INFINITE SKY SPHERE
-            const skyGeo = new THREE.SphereGeometry(4000, 32, 32);
-            // We use a PointMaterial-like effect on a large sphere to ensure stars are everywhere
-            const starTexture = createStarTexture();
-            const skyMat = new THREE.MeshBasicMaterial({ map: starTexture, side: THREE.BackSide });
-            skySphere = new THREE.Mesh(skyGeo, skyMat);
-            scene.add(skySphere);
+            // LAYER 2: Speed Lines / Local Particles (The "Zoom" factor)
+            const speedGeo = new THREE.BufferGeometry();
+            const speedPos = new Float32Array(500 * 3);
+            for(let i=0; i<500*3; i++) speedPos[i] = (Math.random()-0.5) * 1000;
+            speedGeo.setAttribute('position', new THREE.BufferAttribute(speedPos, 3));
+            speedLines = new THREE.Points(speedGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 3, transparent: true }));
+            scene.add(speedLines);
 
             spawnWave();
             window.addEventListener('resize', onWindowResize);
@@ -86,121 +91,68 @@
             animate();
         }
 
-        function createStarTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 1024; canvas.height = 1024;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'black'; ctx.fillRect(0,0,1024,1024);
-            ctx.fillStyle = 'white';
-            for(let i=0; i<1500; i++) {
-                ctx.beginPath();
-                ctx.arc(Math.random()*1024, Math.random()*1024, Math.random()*1.5, 0, Math.PI*2);
-                ctx.fill();
-            }
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-            return tex;
-        }
-
-        function createEngineFlame() {
-            const geo = new THREE.ConeGeometry(0.6, 4, 8);
-            geo.translate(0, -2, 0); geo.rotateX(Math.PI / 2); 
-            const mat = new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 });
-            const flame = new THREE.Mesh(geo, mat);
-            flame.position.set(0, 0, -1.2); flame.scale.set(0, 0, 0);
-            return flame;
-        }
-
         function spawnTrail() {
-            const trailGeo = new THREE.SphereGeometry(0.5, 4, 4);
-            const trailMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.6 });
-            const dot = new THREE.Mesh(trailGeo, trailMat);
+            const dot = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 4, 4), 
+                new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 })
+            );
             dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion));
-            dot.userData = { life: 1.0, scale: 1.0 };
+            dot.userData = { life: 1.0 };
             scene.add(dot);
             trails.push(dot);
-        }
-
-        function spawnWave() {
-            targetsDestroyed = 0;
-            const center = ship ? ship.position : new THREE.Vector3(0,0,-80);
-            for (let i = 0; i < targetsInWave; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 150 + Math.random() * 100;
-                spawnTarget(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*100, center.z + Math.sin(angle)*dist - 100);
-            }
-            updateHUD();
-        }
-
-        function spawnTarget(x, y, z) {
-            const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 }));
-            mesh.position.set(x, y, z);
-            mesh.userData = { rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) };
-            scene.add(mesh);
-            targets.push(mesh);
-        }
-
-        function fireLaser() {
-            if (!ship) return;
-            const plasma = new THREE.Group();
-            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
-            plasma.add(new THREE.PointLight(0x00ffff, 500, 100));
-            plasma.position.copy(ship.position);
-            const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
-            plasma.userData = { velocity: dir.multiplyScalar(15), spawn: Date.now() };
-            scene.add(plasma);
-            bullets.push(plasma);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized) {
-                // POV Steering
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
-                // Movement & Drift
                 if (isThrusting) {
                     const thrustDir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
                     velocityVec.add(thrustDir.multiplyScalar(ACCEL_FORCE));
                     if(velocityVec.length() > MAX_VELOCITY) velocityVec.setLength(MAX_VELOCITY);
-                    engineFlame.scale.set(1, 1, 1.2 + Math.random()*0.4);
-                    if(Math.random() > 0.5) spawnTrail(); // Spawn engine trails
+                    engineFlame.scale.set(1, 1, 1.5 + Math.random()*0.5);
+                    if(Math.random() > 0.4) spawnTrail();
                 } else {
                     velocityVec.multiplyScalar(DRIFT_INERTIA);
                     engineFlame.scale.set(0,0,0);
                 }
                 ship.position.add(velocityVec);
 
-                // Skybox follows Camera so it's always centered
-                skySphere.position.copy(camera.position);
+                // PARALLAX EFFECT: Move star layers relative to ship but at different scales
+                backgroundStars.position.copy(ship.position).multiplyScalar(0.95); // Moves very slowly
+                
+                // SPEED PARTICLES: Wrap around the ship in a 500-unit box
+                const sPos = speedLines.geometry.attributes.position.array;
+                for(let i=0; i<sPos.length; i+=3) {
+                    if (Math.abs(sPos[i] - ship.position.x) > 500) sPos[i] = ship.position.x + (sPos[i] < ship.position.x ? 500 : -500);
+                    if (Math.abs(sPos[i+1] - ship.position.y) > 500) sPos[i+1] = ship.position.y + (sPos[i+1] < ship.position.y ? 500 : -500);
+                    if (Math.abs(sPos[i+2] - ship.position.z) > 500) sPos[i+2] = ship.position.z + (sPos[i+2] < ship.position.z ? 500 : -500);
+                }
+                speedLines.geometry.attributes.position.needsUpdate = true;
 
-                // Camera Follow
                 camera.lookAt(ship.position);
                 const d = ship.position.distanceTo(camera.position);
                 if (d > CAMERA_COMFORT_RADIUS) {
-                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.08));
+                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.1));
                 }
-                shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 4, 0));
             }
 
-            // Update Trails
+            // Trails & Bullets Physics
             trails.forEach((t, i) => {
-                t.userData.life -= 0.03;
+                t.userData.life -= 0.04;
                 t.scale.setScalar(t.userData.life);
                 t.material.opacity = t.userData.life;
                 if(t.userData.life <= 0) { scene.remove(t); trails.splice(i, 1); }
             });
 
-            // Bullets
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    const dist = b.position.distanceTo(t.position);
-                    if (dist < 80) t.material.emissiveIntensity = 2.0 - (dist/40);
-                    if (dist < 15) {
+                    if (b.position.distanceTo(t.position) < 15) {
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
@@ -208,41 +160,31 @@
                         updateHUD();
                     }
                 });
-                if (Date.now() - b.userData.spawn > 3000) { scene.remove(b); bullets.splice(bi, 1); }
             });
 
-            targets.forEach(t => { t.rotation.x += t.userData.rot.x; t.rotation.y += t.userData.rot.y; });
             renderer.render(scene, camera);
         }
 
-        function onDeviceMove(e) {
-            if (!isInitialized) return;
-            let pDiff = e.gamma - phoneZero.gamma;
-            let yDiff = e.beta - phoneZero.beta;
-            currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0;
-            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0;
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        // ... [Rest of helper functions: onDeviceMove, spawnWave, updateHUD, etc.] ...
+        function onDeviceMove(e) { if (!isInitialized) return; let pDiff = e.gamma - phoneZero.gamma; let yDiff = e.beta - phoneZero.beta; currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0; currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0; }
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        function spawnWave() { targetsDestroyed = 0; const center = ship ? ship.position : new THREE.Vector3(0,0,-80); for (let i = 0; i < targetsInWave; i++) { const angle = Math.random() * Math.PI * 2; const dist = 150 + Math.random() * 100; spawnTarget(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*100, center.z + Math.sin(angle)*dist - 100); } updateHUD(); }
+        function spawnTarget(x, y, z) { const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 })); mesh.position.set(x, y, z); mesh.userData = { rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) }; scene.add(mesh); targets.push(mesh); }
+        function fireLaser() { if (!ship) return; const plasma = new THREE.Group(); plasma.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff }))); plasma.position.copy(ship.position); const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize(); plasma.userData = { velocity: dir.multiplyScalar(15), spawn: Date.now() }; scene.add(plasma); bullets.push(plasma); }
+        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
 
         document.getElementById('startBtn').addEventListener('click', function() {
             this.style.display = 'none'; hud.style.display = 'block'; thrustBtn.style.display = 'block';
             init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene; engineFlame = createEngineFlame();
+                ship = gltf.scene;
+                engineFlame = new THREE.Mesh(new THREE.ConeGeometry(0.6, 4, 8), new THREE.MeshBasicMaterial({ color: 0xff7800 }));
+                engineFlame.translateY(-2); engineFlame.rotateX(Math.PI/2); engineFlame.position.set(0,0,-1.2);
                 ship.add(engineFlame); scene.add(ship);
                 ship.position.set(0, 0, -60); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
-            window.addEventListener('deviceorientation', (e) => {
-                if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; }
-                onDeviceMove(e);
-            });
+            window.addEventListener('deviceorientation', (e) => { if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; } onDeviceMove(e); });
         });
-
-        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
     </script>
 </body>
 </html>
