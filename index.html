@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Full Game</title>
+    <title>Star Stream - POV & Shards</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
         #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 20; font-size: 12px; cursor: pointer; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
@@ -15,24 +14,17 @@
         #debug { position: absolute; top: 50px; left: 10px; font-size: 11px; pointer-events: none; color: #fff; line-height: 1.4; }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; }
         #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); padding: 5px; border: 1px solid #0f0; font-size: 12px; color: #0f0; }
-        #gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #fff; font-size: 24px; display: none; }
-        #gameOver button { margin-top: 20px; }
     </style>
 </head>
 <body>
-    <canvas id="overlay"></canvas>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: PLASMA-V5</div>
+    <div id="versionBadge">VER: PLASMA-V7-POV-SHARDS</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
         <div>TARGETS: <span id="targets">0</span></div>
-    </div>
-    <div id="gameOver">
-        <div id="finalScore"></div>
-        <button id="restartBtn">PLAY AGAIN</button>
     </div>
     <div id="ui"><button id="startBtn">START GAME</button></div>
 
@@ -52,55 +44,32 @@
         let scene, camera, renderer, ship, shipLight;
         let targets = [];
         let bullets = [];
-        let thrustParticles = [];
+        let particles = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentVelocity = { p: 0, y: 0 };
         let isInitialized = false;
         let isThrusting = false;
-        let shipVelocity = new THREE.Vector3();
         let shipSpeed = 0;
+        
         const MAX_SPEED = 2.0;
         const ACCELERATION = 0.08;
         const DECELERATION = 0.96;
+        const CAMERA_COMFORT_RADIUS = 50; 
+        const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
 
-        // Old Man Camera variables - camera is lazy, only moves when ship strays too far
-        let cameraPosition = new THREE.Vector3(0, 5, 25);
-        let cameraLookAt = new THREE.Vector3(0, 0, 0);
-        const CAMERA_POSITION_DAMPING = 0.05; // Very lazy movement
-        const CAMERA_COMFORT_RADIUS = 30; // Ship can wander this far before camera follows
-        const SHIP_START_DISTANCE = -80; // Ship starts far from camera (was -20)
-        const SHIP_SCALE = 3.0; // Scale ship 3x to be visible at distance
-        let particleFrameCounter = 0; // Spawn particles every N frames for performance
-
-        // Ship orientation adjustment - change this if bullets/thrust go wrong direction
-        const SHIP_FORWARD = new THREE.Vector3(0, 0, 1); // Try (0,0,-1) if backwards
-
-        // Game state
-        let score = 0;
-        let wave = 1;
-        let targetsInWave = 5;
-        let targetsDestroyed = 0;
-
-        // Canvas for thrust bloom
-        const overlay = document.getElementById('overlay');
-        const ctx = overlay.getContext('2d');
+        let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
 
         const debug = document.getElementById('debug');
         const thrustBtn = document.getElementById('thrustBtn');
         const hud = document.getElementById('hud');
-        const scoreEl = document.getElementById('score');
-        const waveEl = document.getElementById('wave');
-        const targetsEl = document.getElementById('targets');
 
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
             camera.position.set(0, 5, 25);
-            camera.lookAt(0, 0, 0);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.3));
@@ -111,485 +80,129 @@
             shipLight = new THREE.PointLight(0x00ffff, 150, 100);
             scene.add(shipLight);
 
-            // Create Stars
+            // Background Stars
             const vertices = [];
-            for (let i = 0; i < 3000; i++) {
-                vertices.push(
-                    THREE.MathUtils.randFloatSpread(2000), 
-                    THREE.MathUtils.randFloatSpread(2000), 
-                    THREE.MathUtils.randFloatSpread(2000)
-                );
-            }
+            for (let i = 0; i < 3000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
             const starGeo = new THREE.BufferGeometry();
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
 
-            // Spawn first wave of targets
             spawnWave();
-
             window.addEventListener('resize', onWindowResize);
-            window.addEventListener('touchstart', handleTouch);
+            window.addEventListener('touchstart', (e) => { if (e.target !== thrustBtn) fireLaser(); });
             
-            // Thrust button controls
-            thrustBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                isThrusting = true;
-                thrustBtn.classList.add('active');
-            });
-            
-            thrustBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                isThrusting = false;
-                thrustBtn.classList.remove('active');
-            });
+            thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); });
+            thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); });
 
             animate();
         }
 
         function spawnWave() {
             targetsDestroyed = 0;
-            const numTargets = targetsInWave;
-            
-            for (let i = 0; i < numTargets; i++) {
-                // Spawn targets in front of the ship in a cone
-                const angle = (Math.PI * 2 * i) / numTargets;
-                const radius = 100 + Math.random() * 100;
-                const spread = 80;
-                
-                const x = Math.sin(angle) * radius + (Math.random() - 0.5) * spread;
-                const y = (Math.random() - 0.5) * spread;
-                const z = -radius - Math.random() * 100; // Negative Z is in front
-                
-                spawnTarget(x, y, z);
+            for (let i = 0; i < targetsInWave; i++) {
+                const angle = (Math.PI * 2 * i) / targetsInWave;
+                const radius = 180 + Math.random() * 100;
+                spawnTarget(Math.sin(angle) * radius, (Math.random() - 0.5) * 100, -radius - 100);
             }
-            
             updateHUD();
         }
 
-        function spawnThrustParticles() {
-            if (!ship || !isThrusting) return;
-            
-            // Only spawn particles every 2 frames for performance
-            particleFrameCounter++;
-            if (particleFrameCounter % 2 !== 0) return;
-            
-            // Spawn particles from ship's rear (engine position)
-            // Engine is opposite direction of forward movement
-            const engineOffset = SHIP_FORWARD.clone().multiplyScalar(-8);
-            engineOffset.applyQuaternion(ship.quaternion);
-            const particlePos = ship.position.clone().add(engineOffset);
-            
-            // Create 1-2 particles (reduced from 3 for performance)
-            const numParticles = Math.random() > 0.5 ? 2 : 1;
-            for (let i = 0; i < numParticles; i++) {
-                const particle = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.8 + Math.random() * 0.4, 8, 8),
-                    new THREE.MeshBasicMaterial({ 
-                        color: 0xff7700,
-                        transparent: true,
-                        opacity: 1.0
-                    })
-                );
-                
-                // Add glow
-                const light = new THREE.PointLight(0xff7700, 20, 15);
-                particle.add(light);
-                
-                particle.position.copy(particlePos);
-                
-                // Add slight random spread
-                particle.position.x += (Math.random() - 0.5) * 2;
-                particle.position.y += (Math.random() - 0.5) * 2;
-                particle.position.z += (Math.random() - 0.5) * 2;
-                
-                particle.userData.life = 1.0; // 1 second lifespan
-                particle.userData.spawnTime = Date.now();
-                
-                scene.add(particle);
-                thrustParticles.push(particle);
-            }
-        }
-
         function spawnTarget(x, y, z) {
-            const size = 12 + Math.random() * 8; // Doubled from 6 + Math.random() * 4
-            
-            // Create crystalline geometry
-            const geometry = Math.random() > 0.5 
-                ? new THREE.OctahedronGeometry(size, 0)
-                : new THREE.IcosahedronGeometry(size, 0);
-            
-            // Random crystal colors
-            const colors = [
-                { color: 0xff0066, emissive: 0x660033 }, // Pink/Red
-                { color: 0x00ffff, emissive: 0x006666 }, // Cyan
-                { color: 0xff00ff, emissive: 0x660066 }, // Magenta
-                { color: 0xffff00, emissive: 0x666600 }, // Yellow
-                { color: 0xff6600, emissive: 0x663300 }, // Orange
-                { color: 0x00ff00, emissive: 0x006600 }, // Green
-            ];
-            const colorScheme = colors[Math.floor(Math.random() * colors.length)];
-            
-            const material = new THREE.MeshStandardMaterial({ 
-                color: colorScheme.color,
-                emissive: colorScheme.emissive,
-                emissiveIntensity: 0.8,
-                transparent: true,
-                opacity: 0.85,
-                metalness: 0.3,
-                roughness: 0.2
-            });
-            
-            const mesh = new THREE.Mesh(geometry, material);
+            const size = 12 + Math.random() * 8;
+            const mat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444, transparent: true, opacity: 0.85 });
+            const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), mat);
             mesh.position.set(x, y, z);
-            mesh.userData.size = size;
-            mesh.userData.rotationSpeed = new THREE.Vector3(
-                (Math.random() - 0.5) * 0.02,
-                (Math.random() - 0.5) * 0.02,
-                (Math.random() - 0.5) * 0.02
-            );
-            
-            // Add inner glow point light
-            const glow = new THREE.PointLight(colorScheme.color, 50, size * 3);
-            mesh.add(glow);
-            
+            mesh.userData = { size: size, rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) };
             scene.add(mesh);
             targets.push(mesh);
         }
 
-        function handleTouch(e) {
-            // Only fire if not touching the thrust button
-            if (e.target === thrustBtn) return;
-            fireLaser();
-        }
-
         function fireLaser() {
             if (!ship) return;
-            
-            // Create plasma ball - larger, glowing sphere
-            const plasmaCore = new THREE.Mesh(
-                new THREE.SphereGeometry(2, 16, 16),
-                new THREE.MeshBasicMaterial({ 
-                    color: 0x00ffff,
-                    transparent: true,
-                    opacity: 1.0
-                })
-            );
-            
-            // Outer glow halo
-            const plasmaHalo = new THREE.Mesh(
-                new THREE.SphereGeometry(4, 16, 16),
-                new THREE.MeshBasicMaterial({ 
-                    color: 0x00ffff,
-                    transparent: true,
-                    opacity: 0.3
-                })
-            );
-            
             const plasma = new THREE.Group();
-            plasma.add(plasmaCore);
-            plasma.add(plasmaHalo);
-            
-            // Add bright point light
-            const plasmaLight = new THREE.PointLight(0x00ffff, 300, 80);
-            plasma.add(plasmaLight);
-            
-            // Spawn at ship position
+            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
+            const pLight = new THREE.PointLight(0x00ffff, 800, 150);
+            plasma.add(pLight);
             plasma.position.copy(ship.position);
             
-            // Get ship's forward direction
-            const dir = SHIP_FORWARD.clone();
-            dir.applyQuaternion(ship.quaternion).normalize();
-            
-            // Bullet velocity (no ship velocity added since ship now moves in world)
-            const bulletSpeed = 35;
-            plasma.userData.velocity = dir.multiplyScalar(bulletSpeed);
-            plasma.userData.spawnTime = Date.now();
-            plasma.userData.core = plasmaCore;
-            plasma.userData.halo = plasmaHalo;
-            plasma.userData.light = plasmaLight;
-            
+            const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
+            plasma.userData = { velocity: dir.multiplyScalar(18), spawn: Date.now() };
             scene.add(plasma);
             bullets.push(plasma);
         }
 
-        function checkCollisions() {
-            // Check each bullet against each target
-            // Use reverse iteration to safely splice during loop
-            for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
-                const bullet = bullets[bIndex];
-                
-                // Skip explosion shards
-                if (bullet.userData.rotation) continue;
-                if (!bullet.userData.velocity) continue;
-                
-                let hitOccurred = false;
-                
-                for (let tIndex = targets.length - 1; tIndex >= 0; tIndex--) {
-                    const target = targets[tIndex];
-                    const distance = bullet.position.distanceTo(target.position);
-                    const hitRadius = (target.userData.size * 2.5) + 2; // Generous hit radius
-                    
-                    if (distance < hitRadius) {
-                        // HIT!
-                        createCrystalExplosion(target.position.clone(), target.material.color);
-                        
-                        // Remove target
-                        scene.remove(target);
-                        targets.splice(tIndex, 1);
-                        
-                        // Remove bullet
-                        scene.remove(bullet);
-                        bullets.splice(bIndex, 1);
-                        
-                        // Update score
-                        score += 10;
-                        targetsDestroyed++;
-                        updateHUD();
-                        
-                        // Check if wave complete
-                        if (targetsDestroyed >= targetsInWave) {
-                            wave++;
-                            targetsInWave += 2;
-                            setTimeout(() => spawnWave(), 2000);
-                        }
-                        
-                        hitOccurred = true;
-                        break; // Exit target loop - bullet is destroyed
-                    }
-                }
-                
-                if (hitOccurred) continue; // Skip to next bullet
-                
-                // Proximity lighting - check if bullet is near any targets
-                targets.forEach(target => {
-                    const distance = bullet.position.distanceTo(target.position);
-                    const proximityThreshold = target.userData.size * 3;
-                    
-                    if (distance < proximityThreshold) {
-                        // Brighten the target when plasma passes nearby
-                        const intensity = 1.0 - (distance / proximityThreshold);
-                        target.material.emissiveIntensity = 0.8 + (intensity * 1.2);
-                        
-                        // Also brighten the plasma
-                        if (bullet.userData.light) {
-                            bullet.userData.light.intensity = 300 + (intensity * 400);
-                        }
-                    } else {
-                        // Reset to normal
-                        target.material.emissiveIntensity = 0.8;
-                    }
-                });
-            }
-        }
-
-        function createCrystalExplosion(position, color) {
-            // Create crystal shards that tumble away
-            const shardCount = 15;
-            for (let i = 0; i < shardCount; i++) {
-                const shard = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(Math.random() * 1.5 + 0.5, 0),
-                    new THREE.MeshBasicMaterial({ 
-                        color: color,
-                        transparent: true,
-                        opacity: 1.0
-                    })
-                );
-                shard.position.copy(position);
-                
-                const velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 4,
-                    (Math.random() - 0.5) * 4,
-                    (Math.random() - 0.5) * 4
-                );
-                
-                shard.userData.velocity = velocity;
-                shard.userData.rotation = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.3,
-                    (Math.random() - 0.5) * 0.3,
-                    (Math.random() - 0.5) * 0.3
-                );
-                shard.userData.life = 1.0;
-                
+        function createExplosion(pos) {
+            for (let i = 0; i < 12; i++) {
+                const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random() * 2 + 1), new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true }));
+                shard.position.copy(pos);
+                shard.userData = { 
+                    vel: new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4),
+                    rot: new THREE.Vector3(Math.random()*0.1, Math.random()*0.1, Math.random()*0.1),
+                    life: 1.0 
+                };
                 scene.add(shard);
-                bullets.push(shard); // Reuse bullet system for cleanup
+                particles.push(shard);
             }
-        }
-
-        function updateHUD() {
-            scoreEl.textContent = score;
-            waveEl.textContent = wave;
-            targetsEl.textContent = targets.length;
-        }
-
-        function drawThrustBloom() {
-            ctx.clearRect(0, 0, overlay.width, overlay.height);
-            
-            if (!isThrusting || shipSpeed < 0.1) return;
-            
-            const w = overlay.width;
-            const h = overlay.height;
-            
-            // Intensity based on speed
-            const intensity = Math.min(shipSpeed / MAX_SPEED, 1.0);
-            const opacity = intensity * 0.4;
-            
-            // Radial bloom from edges toward center (motion blur effect)
-            const bloomSize = Math.min(w, h) * 0.8;
-            
-            // Create multiple radial gradients from screen edges
-            const gradients = [
-                // Top edge
-                { x: w/2, y: -bloomSize * 0.3, r: bloomSize },
-                // Bottom edge
-                { x: w/2, y: h + bloomSize * 0.3, r: bloomSize },
-                // Left edge
-                { x: -bloomSize * 0.3, y: h/2, r: bloomSize },
-                // Right edge
-                { x: w + bloomSize * 0.3, y: h/2, r: bloomSize }
-            ];
-            
-            gradients.forEach(g => {
-                const grad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.r);
-                grad.addColorStop(0.4, `rgba(255, 120, 0, ${opacity})`);
-                grad.addColorStop(0.7, `rgba(255, 80, 0, ${opacity * 0.4})`);
-                grad.addColorStop(1, 'rgba(255, 120, 0, 0)');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, w, h);
-            });
-            
-            // Central vignette for speed streaks
-            const centerGrad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w, h) * 0.7);
-            centerGrad.addColorStop(0, 'rgba(255, 120, 0, 0)');
-            centerGrad.addColorStop(0.6, `rgba(255, 100, 0, ${opacity * 0.2})`);
-            centerGrad.addColorStop(1, `rgba(255, 120, 0, ${opacity * 0.3})`);
-            ctx.fillStyle = centerGrad;
-            ctx.fillRect(0, 0, w, h);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-
             if (ship && isInitialized) {
-                // Apply device orientation rotation
-                ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
-                ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
+                // POV Steering: Use Camera's axis
+                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                ship.rotateOnWorldAxis(camUp, -currentVelocity.y);
+                ship.rotateOnWorldAxis(camRight, -currentVelocity.p);
+
+                if (isThrusting) shipSpeed = Math.min(shipSpeed + ACCELERATION, MAX_SPEED);
+                else shipSpeed *= DECELERATION;
                 
-                // Apply thrust - SHIP ACTUALLY MOVES NOW (not inverse world movement)
-                if (isThrusting) {
-                    shipSpeed = Math.min(shipSpeed + ACCELERATION, MAX_SPEED);
-                    spawnThrustParticles();
-                } else {
-                    shipSpeed *= DECELERATION;
-                }
-                
-                // Move ship through space based on forward direction
-                if (shipSpeed > 0.01) {
-                    const forward = SHIP_FORWARD.clone();
-                    forward.applyQuaternion(ship.quaternion).normalize();
-                    shipVelocity.copy(forward.multiplyScalar(shipSpeed));
-                    ship.position.add(shipVelocity);
-                } else {
-                    shipVelocity.set(0, 0, 0);
-                }
-                
-                // OLD MAN CAMERA - lazy following
-                // Always look at ship (puppy)
+                const fwd = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
+                ship.position.add(fwd.multiplyScalar(shipSpeed));
+
+                // Old Man Camera (Long Leash)
                 camera.lookAt(ship.position);
-                
-                // Only move camera if ship strays too far from camera's view center
-                const shipToCameraOffset = ship.position.clone().sub(cameraPosition);
-                const distanceFromCamera = shipToCameraOffset.length();
-                
-                // If ship is outside comfort zone, camera reluctantly follows
-                if (distanceFromCamera > CAMERA_COMFORT_RADIUS) {
-                    // Move camera just enough to keep ship in range
-                    const moveDirection = shipToCameraOffset.clone().normalize();
-                    const moveAmount = distanceFromCamera - CAMERA_COMFORT_RADIUS;
-                    const targetMove = moveDirection.multiplyScalar(moveAmount);
-                    
-                    // Apply damped movement (arthritic old man)
-                    cameraPosition.add(targetMove.multiplyScalar(CAMERA_POSITION_DAMPING));
-                    camera.position.copy(cameraPosition);
+                const d = ship.position.distanceTo(camera.position);
+                if (d > CAMERA_COMFORT_RADIUS) {
+                    const move = new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.03);
+                    camera.position.add(move);
                 }
-                
-                // Update ship light
-                shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
-                
-                // Update debug info
-                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Ship: (${ship.position.x.toFixed(1)}, ${ship.position.y.toFixed(1)}, ${ship.position.z.toFixed(1)})<br>Cam Dist: ${distanceFromCamera.toFixed(1)}`;
+                shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 0));
+                debug.innerHTML = `Dist: ${d.toFixed(1)} | POV Controls Active`;
             }
 
-            // Rotate crystals
-            targets.forEach(target => {
-                if (target.userData.rotationSpeed) {
-                    target.rotation.x += target.userData.rotationSpeed.x;
-                    target.rotation.y += target.userData.rotationSpeed.y;
-                    target.rotation.z += target.userData.rotationSpeed.z;
-                }
-            });
-
-            // Update thrust particles
-            thrustParticles.forEach((p, i) => {
-                const age = (Date.now() - p.userData.spawnTime) / 1000;
-                
-                if (age > 1.0) {
-                    scene.remove(p);
-                    thrustParticles.splice(i, 1);
-                    return;
-                }
-                
-                p.userData.life = 1.0 - age;
-                p.material.opacity = p.userData.life;
-                p.position.y -= 0.05; // Slight drift
-            });
-
-            // Update plasma bullets
+            // Bullet & Proximity Logic
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
-                if (!b.userData.velocity) continue;
-                
-                // Move bullet
                 b.position.add(b.userData.velocity);
                 
-                // Scale plasma based on distance from camera for depth perception
-                const distToCamera = b.position.distanceTo(camera.position);
-                const scale = Math.max(0.5, Math.min(2.0, 100 / distToCamera));
-                if (b.userData.core && b.userData.halo) {
-                    b.userData.core.scale.setScalar(scale);
-                    b.userData.halo.scale.setScalar(scale);
-                }
-                
-                // Handle explosion shards
-                if (b.userData.life !== undefined && b.userData.rotation) {
-                    b.userData.life -= 0.02;
-                    b.material.opacity = b.userData.life;
-                    b.material.transparent = true;
+                targets.forEach((t, ti) => {
+                    const dist = b.position.distanceTo(t.position);
+                    if (dist < 80) t.material.emissiveIntensity = 3.0 - (dist/40); // Proximity lighting
                     
-                    b.rotation.x += b.userData.rotation.x;
-                    b.rotation.y += b.userData.rotation.y;
-                    b.rotation.z += b.userData.rotation.z;
-                    
-                    if (b.userData.life <= 0) {
-                        scene.remove(b);
-                        bullets.splice(i, 1);
+                    if (dist < t.userData.size + 5) {
+                        createExplosion(t.position);
+                        scene.remove(t); targets.splice(ti, 1);
+                        scene.remove(b); bullets.splice(i, 1);
+                        score += 10; targetsDestroyed++;
+                        if (targetsDestroyed >= targetsInWave) { wave++; targetsInWave += 2; setTimeout(spawnWave, 2000); }
+                        updateHUD();
                     }
-                    continue;
-                }
-                
-                // Remove bullets after 3 seconds or too far
-                const age = Date.now() - b.userData.spawnTime;
-                if (age > 3000 || b.position.length() > 2000) {
-                    scene.remove(b);
-                    bullets.splice(i, 1);
-                }
+                });
+                if (Date.now() - b.userData.spawn > 3000) { scene.remove(b); bullets.splice(i, 1); }
             }
 
-            // Check collisions with proximity lighting
-            checkCollisions();
+            // Shard Physics
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.vel);
+                p.rotation.x += p.userData.rot.x;
+                p.userData.life -= 0.02;
+                p.material.opacity = p.userData.life;
+                if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+            }
 
-            // Draw thrust visual effect
-            drawThrustBloom();
-
+            targets.forEach(t => { t.rotation.x += t.userData.rot.x; t.rotation.y += t.userData.rot.y; });
             renderer.render(scene, camera);
         }
 
@@ -597,84 +210,29 @@
             if (!isInitialized) return;
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-            currentVelocity.p = Math.abs(pDiff) > 3 ? pDiff * 0.001 : 0;
-            currentVelocity.y = Math.abs(yDiff) > 3 ? yDiff * -0.001 : 0;
+            currentVelocity.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0;
+            currentVelocity.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0;
         }
 
         function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            overlay.width = window.innerWidth;
-            overlay.height = window.innerHeight;
         }
 
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isInitialized = false; 
-            debug.innerText = "RE-ZEROING...";
-        });
-
         document.getElementById('startBtn').addEventListener('click', function() {
-            this.style.display = 'none';
-            hud.style.display = 'block';
-            thrustBtn.style.display = 'block';
+            this.style.display = 'none'; hud.style.display = 'block'; thrustBtn.style.display = 'block';
             init();
-            onWindowResize();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene;
-                ship.traverse(node => { if(node.isMesh) node.material.flatShading = false; });
-                scene.add(ship);
-                
-                // Position ship far from camera
-                ship.position.set(0, 0, SHIP_START_DISTANCE);
-                
-                // Scale ship 3x to be visible at distance
-                ship.scale.setScalar(SHIP_SCALE);
-                
-                ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
-                    THREE.MathUtils.degToRad(180), // 180° rotation - GLB model is backwards
-                    0   // No roll
-                );
-            }, undefined, (error) => {
-                console.error('Error loading ship model:', error);
-                // Create a simple placeholder ship if model fails to load
-                const placeholder = new THREE.Mesh(
-                    new THREE.ConeGeometry(2, 8, 8),
-                    new THREE.MeshStandardMaterial({ color: 0x00ffff })
-                );
-                placeholder.rotation.x = Math.PI / 2;
-                ship = new THREE.Group();
-                ship.add(placeholder);
-                scene.add(ship);
-                
-                // Position ship far from camera
-                ship.position.set(0, 0, SHIP_START_DISTANCE);
-                
-                // Scale ship 3x to be visible at distance
-                ship.scale.setScalar(SHIP_SCALE);
-                
-                ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
-                    THREE.MathUtils.degToRad(180), // 180° rotation - model is backwards
-                    0   // No roll
-                );
+                ship = gltf.scene; scene.add(ship);
+                ship.position.set(0, 0, -80); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
-            
             window.addEventListener('deviceorientation', (e) => {
-                if (!isInitialized) {
-                    phoneZero = { beta: e.beta, gamma: e.gamma };
-                    isInitialized = true;
-                    debug.innerText = "GAME ACTIVE";
-                }
+                if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; }
                 onDeviceMove(e);
             });
         });
 
-        document.getElementById('restartBtn').addEventListener('click', () => {
-            location.reload();
-        });
+        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
     </script>
 </body>
 </html>
