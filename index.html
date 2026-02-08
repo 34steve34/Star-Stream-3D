@@ -24,7 +24,7 @@
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: FULL-GAME-V1</div>
+    <div id="versionBadge">VER: CRYSTAL-V2</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
@@ -52,6 +52,7 @@
         let scene, camera, renderer, ship, shipLight;
         let targets = [];
         let bullets = [];
+        let thrustParticles = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentVelocity = { p: 0, y: 0 };
         let isInitialized = false;
@@ -61,6 +62,14 @@
         const MAX_SPEED = 2.0;
         const ACCELERATION = 0.08;
         const DECELERATION = 0.96;
+
+        // Chase camera variables
+        let cameraPosition = new THREE.Vector3(0, 5, 25);
+        let cameraLookAt = new THREE.Vector3(0, 0, 0);
+        const CAMERA_POSITION_DAMPING = 0.08;
+        const CAMERA_LOOKAT_DAMPING = 0.05;
+        const CAMERA_DISTANCE = 25;
+        const CAMERA_HEIGHT = 5;
 
         // Game state
         let score = 0;
@@ -153,18 +162,85 @@
             updateHUD();
         }
 
-        function spawnTarget(x, y, z) {
+        function spawnThrustParticles() {
+            if (!ship || !isThrusting) return;
+            
+            // Spawn particles from ship's rear (engine position)
+            // Ship's local rear is at -Z after 180° rotation, so we want +Z in local space
+            const engineOffset = new THREE.Vector3(0, 0, -8); // Behind the ship
+            engineOffset.applyQuaternion(ship.quaternion);
+            const particlePos = ship.position.clone().add(engineOffset);
+            
+            // Create 2-3 particles per frame when thrusting
+            for (let i = 0; i < 3; i++) {
+                const particle = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.8 + Math.random() * 0.4, 8, 8),
+                    new THREE.MeshBasicMaterial({ 
+                        color: 0xff7700,
+                        transparent: true,
+                        opacity: 1.0
+                    })
+                );
+                
+                // Add glow
+                const light = new THREE.PointLight(0xff7700, 20, 15);
+                particle.add(light);
+                
+                particle.position.copy(particlePos);
+                
+                // Add slight random spread
+                particle.position.x += (Math.random() - 0.5) * 2;
+                particle.position.y += (Math.random() - 0.5) * 2;
+                particle.position.z += (Math.random() - 0.5) * 2;
+                
+                particle.userData.life = 1.0; // 1 second lifespan
+                particle.userData.spawnTime = Date.now();
+                
+                scene.add(particle);
+                thrustParticles.push(particle);
+            }
+        }
             const size = 6 + Math.random() * 4;
-            const mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(size, 32, 32),
-                new THREE.MeshStandardMaterial({ 
-                    color: 0xff0000, 
-                    emissive: 0x440000,
-                    emissiveIntensity: 0.5
-                })
-            );
+            
+            // Create crystalline geometry
+            const geometry = Math.random() > 0.5 
+                ? new THREE.OctahedronGeometry(size, 0)
+                : new THREE.IcosahedronGeometry(size, 0);
+            
+            // Random crystal colors
+            const colors = [
+                { color: 0xff0066, emissive: 0x660033 }, // Pink/Red
+                { color: 0x00ffff, emissive: 0x006666 }, // Cyan
+                { color: 0xff00ff, emissive: 0x660066 }, // Magenta
+                { color: 0xffff00, emissive: 0x666600 }, // Yellow
+                { color: 0xff6600, emissive: 0x663300 }, // Orange
+                { color: 0x00ff00, emissive: 0x006600 }, // Green
+            ];
+            const colorScheme = colors[Math.floor(Math.random() * colors.length)];
+            
+            const material = new THREE.MeshStandardMaterial({ 
+                color: colorScheme.color,
+                emissive: colorScheme.emissive,
+                emissiveIntensity: 0.8,
+                transparent: true,
+                opacity: 0.85,
+                metalness: 0.3,
+                roughness: 0.2
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
             mesh.position.set(x, y, z);
             mesh.userData.size = size;
+            mesh.userData.rotationSpeed = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02
+            );
+            
+            // Add inner glow point light
+            const glow = new THREE.PointLight(colorScheme.color, 50, size * 3);
+            mesh.add(glow);
+            
             scene.add(mesh);
             targets.push(mesh);
         }
@@ -209,11 +285,12 @@
             bullets.forEach((bullet, bIndex) => {
                 targets.forEach((target, tIndex) => {
                     const distance = bullet.position.distanceTo(target.position);
-                    const hitRadius = target.userData.size + 1.5; // target size + bullet size
+                    // Increased hit radius - 3x more forgiving
+                    const hitRadius = (target.userData.size * 2.5) + 1.5;
                     
                     if (distance < hitRadius) {
                         // HIT!
-                        createExplosion(target.position.clone());
+                        createCrystalExplosion(target.position.clone(), target.material.color);
                         
                         // Remove target and bullet
                         scene.remove(target);
@@ -238,26 +315,36 @@
             });
         }
 
-        function createExplosion(position) {
-            // Create particle explosion
-            const particleCount = 20;
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.5, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: 0xff6600 })
+        function createCrystalExplosion(position, color) {
+            // Create crystal shards that tumble away
+            const shardCount = 15;
+            for (let i = 0; i < shardCount; i++) {
+                const shard = new THREE.Mesh(
+                    new THREE.TetrahedronGeometry(Math.random() * 1.5 + 0.5, 0),
+                    new THREE.MeshBasicMaterial({ 
+                        color: color,
+                        transparent: true,
+                        opacity: 1.0
+                    })
                 );
-                particle.position.copy(position);
+                shard.position.copy(position);
                 
                 const velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 4
                 );
-                particle.userData.velocity = velocity;
-                particle.userData.life = 1.0;
                 
-                scene.add(particle);
-                bullets.push(particle); // Reuse bullet system for cleanup
+                shard.userData.velocity = velocity;
+                shard.userData.rotation = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.3,
+                    (Math.random() - 0.5) * 0.3,
+                    (Math.random() - 0.5) * 0.3
+                );
+                shard.userData.life = 1.0;
+                
+                scene.add(shard);
+                bullets.push(shard); // Reuse bullet system for cleanup
             }
         }
 
@@ -323,6 +410,7 @@
                 // Apply thrust - move targets toward ship instead of moving ship
                 if (isThrusting) {
                     shipSpeed = Math.min(shipSpeed + ACCELERATION, MAX_SPEED);
+                    spawnThrustParticles(); // Spawn thrust particles
                 } else {
                     shipSpeed *= DECELERATION;
                 }
@@ -336,12 +424,34 @@
                     shipVelocity.set(0, 0, 0);
                 }
                 
-                // Ship stays at origin, camera stays fixed behind it
+                // Chase camera with position AND rotation lag
+                const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
+                cameraOffset.applyQuaternion(ship.quaternion);
+                const targetCameraPos = ship.position.clone().add(cameraOffset);
+                
+                // Smooth camera position (lerp)
+                cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
+                camera.position.copy(cameraPosition);
+                
+                // Smooth camera look-at (lerp) - this creates the lag for ship movement on screen
+                cameraLookAt.lerp(ship.position, CAMERA_LOOKAT_DAMPING);
+                camera.lookAt(cameraLookAt);
+                
+                // Ship stays at origin, camera follows with lag
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
                 
                 // Update debug info
-                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Thrusting: ${isThrusting ? 'YES' : 'NO'}`;
+                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Thrusting: ${isThrusting ? 'YES' : 'NO'}<br>Targets: ${targets.length}`;
             }
+
+            // Rotate crystals
+            targets.forEach(target => {
+                if (target.userData.rotationSpeed) {
+                    target.rotation.x += target.userData.rotationSpeed.x;
+                    target.rotation.y += target.userData.rotationSpeed.y;
+                    target.rotation.z += target.userData.rotationSpeed.z;
+                }
+            });
 
             // Move world toward ship (inverse thrust effect)
             if (shipSpeed > 0.01) {
@@ -350,6 +460,29 @@
                     target.position.sub(shipVelocity);
                 });
             }
+
+            // Update thrust particles
+            thrustParticles.forEach((p, i) => {
+                const age = (Date.now() - p.userData.spawnTime) / 1000; // age in seconds
+                
+                if (age > 1.0) {
+                    scene.remove(p);
+                    thrustParticles.splice(i, 1);
+                    return;
+                }
+                
+                // Fade out over 1 second
+                p.userData.life = 1.0 - age;
+                p.material.opacity = p.userData.life;
+                
+                // Particles also move with world (inverse thrust)
+                if (shipSpeed > 0.01) {
+                    p.position.sub(shipVelocity);
+                }
+                
+                // Slight drift
+                p.position.y -= 0.05;
+            });
 
             // Update bullets
             bullets.forEach((b, i) => {
@@ -363,11 +496,17 @@
                     b.position.sub(shipVelocity);
                 }
                 
-                // Fade particles
-                if (b.userData.life !== undefined) {
-                    b.userData.life -= 0.05;
+                // Fade explosion shards
+                if (b.userData.life !== undefined && b.userData.rotation) {
+                    b.userData.life -= 0.02;
                     b.material.opacity = b.userData.life;
                     b.material.transparent = true;
+                    
+                    // Rotate shards
+                    b.rotation.x += b.userData.rotation.x;
+                    b.rotation.y += b.userData.rotation.y;
+                    b.rotation.z += b.userData.rotation.z;
+                    
                     if (b.userData.life <= 0) {
                         scene.remove(b);
                         bullets.splice(i, 1);
