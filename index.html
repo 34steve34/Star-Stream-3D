@@ -17,7 +17,7 @@
 <body>
     <button id="zeroBtn">ZERO</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: BLOOM-V11</div>
+    <div id="versionBadge">VER: BLOOM-V12</div>
     <canvas id="overlay"></canvas>
     <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
 
@@ -104,35 +104,27 @@
         function fireLaser() {
             if (!ship) return;
             
-            // Create bullet cylinder (thicker and glowing)
-            const bulletLength = 20;
-            const bGeo = new THREE.CylinderGeometry(0.8, 0.8, bulletLength);
+            // Create small bright pellet
+            const bGeo = new THREE.SphereGeometry(1.5, 16, 16);
             const bMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff,
-                transparent: false
+                color: 0x00ffff
             });
             const b = new THREE.Mesh(bGeo, bMat);
             
-            // Add a point light to make bullet glow
-            const bulletLight = new THREE.PointLight(0x00ffff, 50, 30);
+            // Add a bright point light to make pellet glow
+            const bulletLight = new THREE.PointLight(0x00ffff, 100, 50);
             b.add(bulletLight);
+            
+            // Spawn pellet right at ship position
+            b.position.copy(ship.position);
             
             // Get ship's forward direction in world space
             // Ship's local forward after 180° rotation is +Z
             const dir = new THREE.Vector3(0, 0, 1);
             dir.applyQuaternion(ship.quaternion).normalize();
             
-            // Spawn bullet near ship nose
-            // Bullet is 20 units long, centered on position, so 10 units extend backward
-            // Use small offset so back of bullet is at nose
-            const spawnOffset = 2;
-            b.position.copy(ship.position).add(dir.clone().multiplyScalar(spawnOffset));
-            
-            // Orient bullet along its velocity direction
-            b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-            
             b.userData.velocity = dir.multiplyScalar(25);
-            b.userData.trail = []; // Store trail positions
+            b.userData.trail = [];
             scene.add(b);
             bullets.push(b);
         }
