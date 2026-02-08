@@ -17,7 +17,7 @@
 <body>
     <button id="zeroBtn">ZERO</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: BLOOM-V9</div>
+    <div id="versionBadge">VER: BLOOM-V10</div>
     <canvas id="overlay"></canvas>
     <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
 
@@ -78,9 +78,9 @@
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
 
-            // TEST THREAT: Spawn behind the camera
-            // Camera is at (0, 5, 25), so threat needs Z > 25 to be behind
-            spawnThreat(0, 5, 100); // Start directly behind camera
+            // TEST THREAT: Start it directly behind the camera
+            // Camera looks down -Z, so threat behind camera = positive Z relative to camera
+            spawnThreat(0, 15, -200); // Will be behind camera view
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('touchstart', fireLaser);
@@ -105,7 +105,8 @@
             if (!ship) return;
             
             // Create bullet cylinder (thicker and glowing)
-            const bGeo = new THREE.CylinderGeometry(0.8, 0.8, 20);
+            const bulletLength = 20;
+            const bGeo = new THREE.CylinderGeometry(0.8, 0.8, bulletLength);
             const bMat = new THREE.MeshBasicMaterial({ 
                 color: 0x00ffff,
                 transparent: false
@@ -121,10 +122,11 @@
             const dir = new THREE.Vector3(0, 0, 1);
             dir.applyQuaternion(ship.quaternion).normalize();
             
-            // Spawn bullet at nose (offset forward from ship center)
-            // Adjust this offset value based on your ship model's size
-            const noseOffset = 8; // Distance from ship center to nose
-            b.position.copy(ship.position).add(dir.clone().multiplyScalar(noseOffset));
+            // Offset from ship center to nose, plus half bullet length
+            // so entire bullet appears ahead of ship
+            const noseOffset = 8;
+            const totalOffset = noseOffset + (bulletLength / 2);
+            b.position.copy(ship.position).add(dir.clone().multiplyScalar(totalOffset));
             
             // Orient bullet along its velocity direction
             b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
@@ -193,66 +195,70 @@
 
         function drawPerimeterBloom(w, h, opacity, spreadFactor) {
             // Draw bloom around entire perimeter when threat is directly behind
-            const bloomWidth = w * 0.3 * spreadFactor;
+            // Center of bloom is OFF-SCREEN, only the glow bleeds onto visible area
+            const bloomDepth = Math.min(w, h) * 0.6; // How far bloom penetrates into screen
+            const bloomRadius = Math.min(w, h) * 1.2; // Large radius so center is way off-screen
             
-            // Top
-            const gradTop = ctx.createLinearGradient(w/2, 0, w/2, bloomWidth);
-            gradTop.addColorStop(0, `rgba(255, 120, 0, ${opacity * 0.8})`);
+            // Top edge - gradient starts above screen
+            const gradTop = ctx.createRadialGradient(w/2, -bloomRadius * 0.5, 0, w/2, -bloomRadius * 0.5, bloomRadius);
+            gradTop.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
+            gradTop.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
             gradTop.addColorStop(1, 'rgba(255, 120, 0, 0)');
             ctx.fillStyle = gradTop;
-            ctx.fillRect(0, 0, w, bloomWidth);
+            ctx.fillRect(0, 0, w, bloomDepth);
             
-            // Bottom
-            const gradBottom = ctx.createLinearGradient(w/2, h, w/2, h - bloomWidth);
-            gradBottom.addColorStop(0, `rgba(255, 120, 0, ${opacity * 0.8})`);
+            // Bottom edge
+            const gradBottom = ctx.createRadialGradient(w/2, h + bloomRadius * 0.5, 0, w/2, h + bloomRadius * 0.5, bloomRadius);
+            gradBottom.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
+            gradBottom.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
             gradBottom.addColorStop(1, 'rgba(255, 120, 0, 0)');
             ctx.fillStyle = gradBottom;
-            ctx.fillRect(0, h - bloomWidth, w, bloomWidth);
+            ctx.fillRect(0, h - bloomDepth, w, bloomDepth);
             
-            // Left
-            const gradLeft = ctx.createLinearGradient(0, h/2, bloomWidth, h/2);
-            gradLeft.addColorStop(0, `rgba(255, 120, 0, ${opacity * 0.8})`);
+            // Left edge
+            const gradLeft = ctx.createRadialGradient(-bloomRadius * 0.5, h/2, 0, -bloomRadius * 0.5, h/2, bloomRadius);
+            gradLeft.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
+            gradLeft.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
             gradLeft.addColorStop(1, 'rgba(255, 120, 0, 0)');
             ctx.fillStyle = gradLeft;
-            ctx.fillRect(0, 0, bloomWidth, h);
+            ctx.fillRect(0, 0, bloomDepth, h);
             
-            // Right
-            const gradRight = ctx.createLinearGradient(w, h/2, w - bloomWidth, h/2);
-            gradRight.addColorStop(0, `rgba(255, 120, 0, ${opacity * 0.8})`);
+            // Right edge
+            const gradRight = ctx.createRadialGradient(w + bloomRadius * 0.5, h/2, 0, w + bloomRadius * 0.5, h/2, bloomRadius);
+            gradRight.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
+            gradRight.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
             gradRight.addColorStop(1, 'rgba(255, 120, 0, 0)');
             ctx.fillStyle = gradRight;
-            ctx.fillRect(w - bloomWidth, 0, bloomWidth, h);
+            ctx.fillRect(w - bloomDepth, 0, bloomDepth, h);
         }
 
         function drawDirectionalBloom(w, h, angleH, angleV, opacity, offAxis, behind) {
             // Map camera-space angles to screen position
-            // angleH: -PI (left) to PI (right)
-            // angleV: -PI (bottom) to PI (top)
+            // Bloom center should be OFF-SCREEN, beyond the perimeter
             
-            // Normalize angles to screen coordinates
             const normH = angleH / Math.PI; // -1 to 1
             const normV = angleV / Math.PI; // -1 to 1
             
-            // Determine which edge this maps to
             const absH = Math.abs(normH);
             const absV = Math.abs(normV);
             
             let glowX, glowY;
-            let bloomRadius = Math.min(w, h) * 0.4;
+            const bloomRadius = Math.min(w, h) * 1.5; // Much larger bloom
+            const edgeOffset = bloomRadius * 0.6; // How far off-screen the center is
             
             if (absH > absV) {
                 // Horizontal edge (left or right)
-                glowX = normH > 0 ? w : 0;
+                glowX = normH > 0 ? w + edgeOffset : -edgeOffset;
                 glowY = h/2 - (normV * h/2);
             } else {
-                // Vertical edge (top or bottom)
+                // Vertical edge (top or bottom)  
                 glowX = w/2 + (normH * w/2);
-                glowY = normV > 0 ? 0 : h;
+                glowY = normV > 0 ? -edgeOffset : h + edgeOffset;
             }
             
             const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, bloomRadius);
-            grad.addColorStop(0, `rgba(255, 120, 0, ${opacity})`);
-            grad.addColorStop(0.5, `rgba(255, 120, 0, ${opacity * 0.5})`);
+            grad.addColorStop(0.2, `rgba(255, 120, 0, ${opacity})`);
+            grad.addColorStop(0.6, `rgba(255, 120, 0, ${opacity * 0.6})`);
             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, w, h);
@@ -264,11 +270,11 @@
             // AUTOMATIC TEST SWEEP: Move the threat in a circle behind the camera
             if (threats.length > 0) {
                 testAngle += 0.01;
-                const radius = 60;
-                // Keep threat behind camera (camera is at z=25, so keep threat z > 25)
+                const radius = 100;
+                // Keep threat in the "behind camera" hemisphere
                 threats[0].position.x = Math.sin(testAngle) * radius;
-                threats[0].position.y = 5 + Math.cos(testAngle) * radius * 0.5;
-                threats[0].position.z = 100 + Math.sin(testAngle * 0.5) * 30; // Vary depth, stay behind
+                threats[0].position.y = 15 + Math.cos(testAngle) * radius * 0.5;
+                threats[0].position.z = -200 + Math.cos(testAngle) * 50; // Vary depth
             }
 
             if (ship && isInitialized) {
