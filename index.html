@@ -49,7 +49,7 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
-            camera.position.set(0, 15, 50); // Camera positioned to view ship from behind and above
+            camera.position.set(0, 5, 25); // Camera positioned to view ship from behind and above
             camera.lookAt(0, 0, 0);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -113,10 +113,20 @@
             });
             const b = new THREE.Mesh(bGeo, bMat);
             
-            b.position.copy(ship.position);
+            // Get ship's world position and forward direction
+            ship.updateMatrixWorld();
+            const shipWorldPos = new THREE.Vector3();
+            ship.getWorldPosition(shipWorldPos);
             
-            // Ship's forward direction
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ship.quaternion).normalize();
+            // Ship's local forward is -Z, get it in world space
+            const dir = new THREE.Vector3(0, 0, -1);
+            dir.applyQuaternion(ship.quaternion).normalize();
+            
+            // Position bullet slightly ahead of ship
+            b.position.copy(shipWorldPos).add(dir.multiplyScalar(10));
+            dir.normalize(); // Reset after using for offset
+            
+            // Orient bullet along its velocity direction
             b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
             
             b.userData.velocity = dir.multiplyScalar(25);
@@ -262,8 +272,9 @@
             }
 
             if (ship && isInitialized) {
-                ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
-                ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
+                // Rotate ship using local axes (relative to ship's current orientation)
+                ship.rotateX(-currentVelocity.p);
+                ship.rotateY(-currentVelocity.y);
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
             }
 
