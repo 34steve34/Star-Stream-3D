@@ -3,21 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Fixed Window V3</title>
+    <title>Star Stream - Test Sweep V5</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
+        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 20; font-size: 12px; cursor: pointer; }
         button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #debug { position: absolute; top: 10px; left: 10px; font-size: 10px; pointer-events: none; color: #fff; }
-        #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(255, 120, 0, 0.3); padding: 5px; border: 1px solid #ff7800; font-size: 12px; color: #ff7800; }
+        #debug { position: absolute; top: 50px; left: 10px; font-size: 12px; pointer-events: none; color: #fff; }
+        #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); padding: 5px; border: 1px solid #0f0; font-size: 12px; color: #0f0; }
     </style>
 </head>
 <body>
-    <div id="debug">System Standby</div>
-    <div id="versionBadge">VER: FIXED-WINDOW-V3</div>
+    <button id="zeroBtn">ZERO</button>
+    <div id="debug">System Ready</div>
+    <div id="versionBadge">VER: SWEEP-TEST-V5</div>
     <canvas id="overlay"></canvas>
-    <div id="ui"><button id="startBtn">START MISSION</button></div>
+    <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
 
     <script type="importmap">
         {
@@ -32,15 +34,17 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let scene, camera, renderer, ship, starField;
+        let scene, camera, renderer, ship, shipLight;
         let threats = [];
         let bullets = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentVelocity = { p: 0, y: 0 };
         let isInitialized = false;
+        let testAngle = 0; // For the 12 to 1 to 2 o'clock sweep
 
         const overlay = document.getElementById('overlay');
         const ctx = overlay.getContext('2d');
+        const debug = document.getElementById('debug');
 
         function init() {
             scene = new THREE.Scene();
@@ -49,23 +53,28 @@
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-            
-            // Create a field of stars
+            scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+            const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+            sun.position.set(10, 20, 10);
+            scene.add(sun);
+
+            shipLight = new THREE.PointLight(0x00ffff, 150, 100);
+            scene.add(shipLight);
+
+            // Create Stars
             const vertices = [];
             for (let i = 0; i < 3000; i++) {
                 vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
             }
             const starGeo = new THREE.BufferGeometry();
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            starField = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 }));
-            scene.add(starField);
+            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
 
-            // One threat directly behind, one coming from the side
-            spawnThreat(0, 0, 400); 
-            spawnThreat(100, 50, 600);
+            // TEST THREAT: Starts directly behind (0,0,300)
+            spawnThreat(0, 0, 300);
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('touchstart', fireLaser);
@@ -74,91 +83,73 @@
 
         function spawnThreat(x, y, z) {
             const mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(6, 24, 24),
-                new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                new THREE.SphereGeometry(8, 32, 32),
+                new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x440000 })
             );
             mesh.position.set(x, y, z);
-            // Move threat toward player seat (Z=0)
-            mesh.userData.velocity = new THREE.Vector3(0, 0, -1.2); 
             scene.add(mesh);
             threats.push(mesh);
         }
 
         function fireLaser() {
             if (!ship) return;
-            const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
-            b.position.copy(ship.position);
+            const bGeo = new THREE.CylinderGeometry(0.2, 0.2, 10);
+            const bMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const b = new THREE.Mesh(bGeo, bMat);
             
-            // ROTATION FIX: Inverted direction to ensure it goes FORWARD (-Z in world space)
-            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            b.position.copy(ship.position);
+            // Forward is -Z in world space for this setup
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(ship.quaternion).normalize();
             b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
             
-            b.userData.velocity = dir.multiplyScalar(15);
+            b.userData.velocity = dir.multiplyScalar(25);
             scene.add(b);
             bullets.push(b);
         }
 
         function drawBloom() {
             ctx.clearRect(0, 0, overlay.width, overlay.height);
-            const w = overlay.width;
-            const h = overlay.height;
+            const w = overlay.width; const h = overlay.height;
 
             threats.forEach(t => {
-                // If Z is positive, it's behind the "glass" (the screen)
                 if (t.position.z > 0) {
                     const angle = Math.atan2(t.position.y, t.position.x);
-                    
-                    // Bloom gets intense as threat gets closer to Z=0 (the player)
-                    // At 400 distance it's faint; at 50 distance it's huge.
-                    const distanceBehind = t.position.z;
-                    const intensity = Math.max(0, 1.0 - (distanceBehind / 500));
-                    
-                    // If it's directly behind (0,0), radius increases to fill screen
+                    const dist = t.position.z;
                     const offCenter = Math.sqrt(t.position.x**2 + t.position.y**2);
-                    const bloomRadius = (w * 0.2) + (intensity * w * 0.5);
+                    
+                    // If offCenter is low, it's directly behind = bigger/wider bloom
+                    const bloomRadius = offCenter < 10 ? w * 0.9 : w * 0.5;
+                    const opacity = Math.max(0.2, 1.0 - (dist / 800));
 
                     const glowX = w/2 + Math.cos(angle) * (w * 0.45);
                     const glowY = h/2 - Math.sin(angle) * (h * 0.45);
 
                     const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, bloomRadius);
-                    grad.addColorStop(0, `rgba(255, 100, 0, ${0.9 * intensity})`);
+                    grad.addColorStop(0, `rgba(255, 120, 0, ${0.8 * opacity})`);
                     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                    
                     ctx.fillStyle = grad;
-                    ctx.globalCompositeOperation = 'screen';
                     ctx.fillRect(0, 0, w, h);
                 }
             });
         }
 
-        function onDeviceMove(e) {
-            if (!isInitialized) return;
-            let pDiff = e.gamma - phoneZero.gamma;
-            let yDiff = e.beta - phoneZero.beta;
-            currentVelocity.p = Math.abs(pDiff) > 3 ? pDiff * 0.001 : 0;
-            currentVelocity.y = Math.abs(yDiff) > 3 ? yDiff * -0.001 : 0;
-        }
-
         function animate() {
             requestAnimationFrame(animate);
-            if (ship && isInitialized) {
-                // The world axes are fixed for the player's view
-                const pAxis = new THREE.Vector3(1, 0, 0);
-                const yAxis = new THREE.Vector3(0, 1, 0);
-                
-                ship.rotateOnWorldAxis(pAxis, -currentVelocity.p);
-                ship.rotateOnWorldAxis(yAxis, -currentVelocity.y);
+            
+            // AUTOMATIC TEST SWEEP: Move the threat in a circle behind the player
+            if (threats.length > 0) {
+                testAngle += 0.02; // Adjust speed of sweep here
+                const radius = 80; // Distance from center-back
+                threats[0].position.x = Math.sin(testAngle) * radius;
+                threats[0].position.y = Math.cos(testAngle) * radius;
+                threats[0].position.z = 250; // Keep it behind
             }
 
-            // Move threats and recycle them
-            threats.forEach(t => {
-                t.position.add(t.userData.velocity);
-                if (t.position.z < -600) {
-                    t.position.z = 600;
-                    t.position.x = THREE.MathUtils.randFloatSpread(200);
-                    t.position.y = THREE.MathUtils.randFloatSpread(200);
-                }
-            });
+            if (ship && isInitialized) {
+                ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
+                ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
+                shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
+            }
 
             bullets.forEach((b, i) => {
                 b.position.add(b.userData.velocity);
@@ -172,6 +163,14 @@
             renderer.render(scene, camera);
         }
 
+        function onDeviceMove(e) {
+            if (!isInitialized) return;
+            let pDiff = e.gamma - phoneZero.gamma;
+            let yDiff = e.beta - phoneZero.beta;
+            currentVelocity.p = Math.abs(pDiff) > 3 ? pDiff * 0.001 : 0;
+            currentVelocity.y = Math.abs(yDiff) > 3 ? yDiff * -0.001 : 0;
+        }
+
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -180,20 +179,27 @@
             overlay.height = window.innerHeight;
         }
 
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isInitialized = false; 
+            debug.innerText = "RE-ZEROING...";
+        });
+
         document.getElementById('startBtn').addEventListener('click', function() {
             this.style.display = 'none';
             init();
             onWindowResize();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
+                ship.traverse(node => { if(node.isMesh) node.material.flatShading = false; });
                 scene.add(ship);
-                // Position ship slightly in front of camera
-                ship.position.set(0, 0, -15); 
+                ship.position.set(0, 0, -15);
             });
             window.addEventListener('deviceorientation', (e) => {
                 if (!isInitialized) {
                     phoneZero = { beta: e.beta, gamma: e.gamma };
                     isInitialized = true;
+                    debug.innerText = "TEST ACTIVE";
                 }
                 onDeviceMove(e);
             });
