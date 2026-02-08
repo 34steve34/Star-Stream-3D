@@ -24,7 +24,7 @@
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: FIXED-V4</div>
+    <div id="versionBadge">VER: PLASMA-V5</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
@@ -63,19 +63,17 @@
         const ACCELERATION = 0.08;
         const DECELERATION = 0.96;
 
-        // Chase camera variables
+        // Old Man Camera variables - camera is lazy, only moves when ship strays too far
         let cameraPosition = new THREE.Vector3(0, 5, 25);
         let cameraLookAt = new THREE.Vector3(0, 0, 0);
-        const CAMERA_POSITION_DAMPING = 0.10; // Increased from 0.08 (20% slower)
-        const CAMERA_LOOKAT_DAMPING = 0.06;   // Increased from 0.05 (20% slower)
-        const CAMERA_DISTANCE = 25;
-        const CAMERA_HEIGHT = 5;
-        const MIN_CAMERA_DISTANCE = 15; // Prevent camera flip
-        const MAX_CAMERA_ROTATION_SPEED = 0.05; // Limit rotation speed to prevent whiplash
+        const CAMERA_POSITION_DAMPING = 0.05; // Very lazy movement
+        const CAMERA_COMFORT_RADIUS = 30; // Ship can wander this far before camera follows
+        const SHIP_START_DISTANCE = -80; // Ship starts far from camera (was -20)
+        const SHIP_SCALE = 3.0; // Scale ship 3x to be visible at distance
         let particleFrameCounter = 0; // Spawn particles every N frames for performance
 
         // Ship orientation adjustment - change this if bullets/thrust go wrong direction
-        const SHIP_FORWARD = new THREE.Vector3(0, 0, -1); // Try (0,0,-1) if backwards
+        const SHIP_FORWARD = new THREE.Vector3(0, 0, 1); // Try (0,0,-1) if backwards
 
         // Game state
         let score = 0;
@@ -267,92 +265,121 @@
         function fireLaser() {
             if (!ship) return;
             
-            // Create bullet sphere - larger and more visible
-            const bGeo = new THREE.SphereGeometry(2.5, 16, 16);
-            const bMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff,
-                transparent: true,
-                opacity: 1.0
-            });
-            const bullet = new THREE.Mesh(bGeo, bMat);
+            // Create plasma ball - larger, glowing sphere
+            const plasmaCore = new THREE.Mesh(
+                new THREE.SphereGeometry(2, 16, 16),
+                new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 1.0
+                })
+            );
             
-            // Add bright point light to bullet
-            const bulletLight = new THREE.PointLight(0x00ffff, 200, 60);
-            bullet.add(bulletLight);
+            // Outer glow halo
+            const plasmaHalo = new THREE.Mesh(
+                new THREE.SphereGeometry(4, 16, 16),
+                new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.3
+                })
+            );
             
-            // Spawn bullet at ship position
-            bullet.position.copy(ship.position);
+            const plasma = new THREE.Group();
+            plasma.add(plasmaCore);
+            plasma.add(plasmaHalo);
             
-            // Get ship's forward direction using configurable vector
+            // Add bright point light
+            const plasmaLight = new THREE.PointLight(0x00ffff, 300, 80);
+            plasma.add(plasmaLight);
+            
+            // Spawn at ship position
+            plasma.position.copy(ship.position);
+            
+            // Get ship's forward direction
             const dir = SHIP_FORWARD.clone();
             dir.applyQuaternion(ship.quaternion).normalize();
             
-            // Add ship's velocity to bullet velocity
-            const bulletSpeed = 30;
-            bullet.userData.velocity = dir.multiplyScalar(bulletSpeed).add(shipVelocity);
-            bullet.userData.spawnTime = Date.now();
+            // Bullet velocity (no ship velocity added since ship now moves in world)
+            const bulletSpeed = 35;
+            plasma.userData.velocity = dir.multiplyScalar(bulletSpeed);
+            plasma.userData.spawnTime = Date.now();
+            plasma.userData.core = plasmaCore;
+            plasma.userData.halo = plasmaHalo;
+            plasma.userData.light = plasmaLight;
             
-            // Trail tracking - store last N positions
-            bullet.userData.trailPositions = [];
-            bullet.userData.maxTrailLength = 12; // Number of trail segments
-            
-            // Create the trail line
-            const trailGeometry = new THREE.BufferGeometry();
-            const trailPositions = new Float32Array(bullet.userData.maxTrailLength * 3);
-            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-            
-            const trailMaterial = new THREE.LineBasicMaterial({
-                color: 0x00ffff,
-                transparent: true,
-                opacity: 0.8,
-                linewidth: 3
-            });
-            
-            const trailLine = new THREE.Line(trailGeometry, trailMaterial);
-            scene.add(trailLine);
-            bullet.userData.trailLine = trailLine;
-            
-            scene.add(bullet);
-            bullets.push(bullet);
+            scene.add(plasma);
+            bullets.push(plasma);
         }
 
         function checkCollisions() {
-            bullets.forEach((bullet, bIndex) => {
-                targets.forEach((target, tIndex) => {
+            // Check each bullet against each target
+            // Use reverse iteration to safely splice during loop
+            for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
+                const bullet = bullets[bIndex];
+                
+                // Skip explosion shards
+                if (bullet.userData.rotation) continue;
+                if (!bullet.userData.velocity) continue;
+                
+                let hitOccurred = false;
+                
+                for (let tIndex = targets.length - 1; tIndex >= 0; tIndex--) {
+                    const target = targets[tIndex];
                     const distance = bullet.position.distanceTo(target.position);
-                    // Increased hit radius - 3x more forgiving
-                    const hitRadius = (target.userData.size * 2.5) + 1.5;
+                    const hitRadius = (target.userData.size * 2.5) + 2; // Generous hit radius
                     
                     if (distance < hitRadius) {
                         // HIT!
                         createCrystalExplosion(target.position.clone(), target.material.color);
                         
-                        // Clean up bullet trail before removing bullet
-                        if (bullet.userData.trailLine) {
-                            scene.remove(bullet.userData.trailLine);
-                        }
-                        
-                        // Remove target and bullet
+                        // Remove target
                         scene.remove(target);
                         targets.splice(tIndex, 1);
+                        
+                        // Remove bullet
                         scene.remove(bullet);
                         bullets.splice(bIndex, 1);
                         
                         // Update score
                         score += 10;
                         targetsDestroyed++;
-                        
                         updateHUD();
                         
                         // Check if wave complete
                         if (targetsDestroyed >= targetsInWave) {
                             wave++;
-                            targetsInWave += 2; // More targets each wave
+                            targetsInWave += 2;
                             setTimeout(() => spawnWave(), 2000);
                         }
+                        
+                        hitOccurred = true;
+                        break; // Exit target loop - bullet is destroyed
+                    }
+                }
+                
+                if (hitOccurred) continue; // Skip to next bullet
+                
+                // Proximity lighting - check if bullet is near any targets
+                targets.forEach(target => {
+                    const distance = bullet.position.distanceTo(target.position);
+                    const proximityThreshold = target.userData.size * 3;
+                    
+                    if (distance < proximityThreshold) {
+                        // Brighten the target when plasma passes nearby
+                        const intensity = 1.0 - (distance / proximityThreshold);
+                        target.material.emissiveIntensity = 0.8 + (intensity * 1.2);
+                        
+                        // Also brighten the plasma
+                        if (bullet.userData.light) {
+                            bullet.userData.light.intensity = 300 + (intensity * 400);
+                        }
+                    } else {
+                        // Reset to normal
+                        target.material.emissiveIntensity = 0.8;
                     }
                 });
-            });
+            }
         }
 
         function createCrystalExplosion(position, color) {
@@ -443,93 +470,53 @@
             requestAnimationFrame(animate);
 
             if (ship && isInitialized) {
-                // Apply device orientation rotation - FULL 4π STERADIAN ROTATION
+                // Apply device orientation rotation
                 ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
                 ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
                 
-                // Apply thrust - move targets toward ship instead of moving ship
+                // Apply thrust - SHIP ACTUALLY MOVES NOW (not inverse world movement)
                 if (isThrusting) {
                     shipSpeed = Math.min(shipSpeed + ACCELERATION, MAX_SPEED);
-                    spawnThrustParticles(); // Spawn thrust particles
+                    spawnThrustParticles();
                 } else {
                     shipSpeed *= DECELERATION;
                 }
                 
-                // Calculate ship's forward direction for moving world
+                // Move ship through space based on forward direction
                 if (shipSpeed > 0.01) {
                     const forward = SHIP_FORWARD.clone();
                     forward.applyQuaternion(ship.quaternion).normalize();
                     shipVelocity.copy(forward.multiplyScalar(shipSpeed));
+                    ship.position.add(shipVelocity);
                 } else {
                     shipVelocity.set(0, 0, 0);
                 }
                 
-                // Camera behavior - ALWAYS use damping, but behavior changes based on speed
-                const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
-                cameraOffset.applyQuaternion(ship.quaternion);
-                const targetCameraPos = ship.position.clone().add(cameraOffset);
+                // OLD MAN CAMERA - lazy following
+                // Always look at ship (puppy)
+                camera.lookAt(ship.position);
                 
-                if (shipSpeed > 0.1) {
-                    // CHASE CAMERA MODE - both position and look-at lag
-                    cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
+                // Only move camera if ship strays too far from camera's view center
+                const shipToCameraOffset = ship.position.clone().sub(cameraPosition);
+                const distanceFromCamera = shipToCameraOffset.length();
+                
+                // If ship is outside comfort zone, camera reluctantly follows
+                if (distanceFromCamera > CAMERA_COMFORT_RADIUS) {
+                    // Move camera just enough to keep ship in range
+                    const moveDirection = shipToCameraOffset.clone().normalize();
+                    const moveAmount = distanceFromCamera - CAMERA_COMFORT_RADIUS;
+                    const targetMove = moveDirection.multiplyScalar(moveAmount);
                     
-                    // Enforce minimum distance to prevent flip
-                    const distToShip = cameraPosition.distanceTo(ship.position);
-                    if (distToShip < MIN_CAMERA_DISTANCE) {
-                        const dir = cameraPosition.clone().sub(ship.position).normalize();
-                        cameraPosition.copy(ship.position).add(dir.multiplyScalar(MIN_CAMERA_DISTANCE));
-                    }
-                    
+                    // Apply damped movement (arthritic old man)
+                    cameraPosition.add(targetMove.multiplyScalar(CAMERA_POSITION_DAMPING));
                     camera.position.copy(cameraPosition);
-                    
-                    // Smooth camera look-at with rotation speed limit
-                    const targetLookAt = ship.position.clone();
-                    const lookAtDelta = targetLookAt.clone().sub(cameraLookAt);
-                    const lookAtDistance = lookAtDelta.length();
-                    
-                    // Clamp rotation speed to prevent whiplash
-                    if (lookAtDistance > MAX_CAMERA_ROTATION_SPEED) {
-                        lookAtDelta.normalize().multiplyScalar(MAX_CAMERA_ROTATION_SPEED);
-                        cameraLookAt.add(lookAtDelta);
-                    } else {
-                        cameraLookAt.lerp(targetLookAt, CAMERA_LOOKAT_DAMPING);
-                    }
-                    
-                    camera.lookAt(cameraLookAt);
-                } else {
-                    // STATIONARY MODE - position still lags smoothly, but look-at is fixed
-                    cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
-                    
-                    // Enforce minimum distance
-                    const distToShip = cameraPosition.distanceTo(ship.position);
-                    if (distToShip < MIN_CAMERA_DISTANCE) {
-                        const dir = cameraPosition.clone().sub(ship.position).normalize();
-                        cameraPosition.copy(ship.position).add(dir.multiplyScalar(MIN_CAMERA_DISTANCE));
-                    }
-                    
-                    camera.position.copy(cameraPosition);
-                    
-                    // Look-at still lags with rotation speed limit for smooth rotation tracking
-                    const targetLookAt = ship.position.clone();
-                    const lookAtDelta = targetLookAt.clone().sub(cameraLookAt);
-                    const lookAtDistance = lookAtDelta.length();
-                    
-                    // Clamp rotation speed
-                    if (lookAtDistance > MAX_CAMERA_ROTATION_SPEED) {
-                        lookAtDelta.normalize().multiplyScalar(MAX_CAMERA_ROTATION_SPEED);
-                        cameraLookAt.add(lookAtDelta);
-                    } else {
-                        cameraLookAt.lerp(targetLookAt, CAMERA_LOOKAT_DAMPING);
-                    }
-                    
-                    camera.lookAt(cameraLookAt);
                 }
                 
-                // Ship stays at origin
+                // Update ship light
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
                 
                 // Update debug info
-                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Thrusting: ${isThrusting ? 'YES' : 'NO'}<br>Targets: ${targets.length}<br>Mode: ${shipSpeed > 0.1 ? 'CHASE' : 'LOCKED'}`;
+                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Ship: (${ship.position.x.toFixed(1)}, ${ship.position.y.toFixed(1)}, ${ship.position.z.toFixed(1)})<br>Cam Dist: ${distanceFromCamera.toFixed(1)}`;
             }
 
             // Rotate crystals
@@ -541,17 +528,9 @@
                 }
             });
 
-            // Move world toward ship (inverse thrust effect)
-            if (shipSpeed > 0.01) {
-                // Move all targets toward ship
-                targets.forEach(target => {
-                    target.position.sub(shipVelocity);
-                });
-            }
-
             // Update thrust particles
             thrustParticles.forEach((p, i) => {
-                const age = (Date.now() - p.userData.spawnTime) / 1000; // age in seconds
+                const age = (Date.now() - p.userData.spawnTime) / 1000;
                 
                 if (age > 1.0) {
                     scene.remove(p);
@@ -559,80 +538,33 @@
                     return;
                 }
                 
-                // Fade out over 1 second
                 p.userData.life = 1.0 - age;
                 p.material.opacity = p.userData.life;
-                
-                // Particles also move with world (inverse thrust)
-                if (shipSpeed > 0.01) {
-                    p.position.sub(shipVelocity);
-                }
-                
-                // Slight drift
-                p.position.y -= 0.05;
+                p.position.y -= 0.05; // Slight drift
             });
 
-            // Update bullets with trail rendering
-            bullets.forEach((b, i) => {
-                if (!b.userData.velocity) return;
-                
-                // Store current position in trail
-                if (b.userData.trailPositions !== undefined) {
-                    b.userData.trailPositions.push(b.position.clone());
-                    
-                    // Limit trail length
-                    if (b.userData.trailPositions.length > b.userData.maxTrailLength) {
-                        b.userData.trailPositions.shift();
-                    }
-                    
-                    // Update trail line geometry
-                    const trail = b.userData.trailLine;
-                    if (trail) {
-                        const positions = trail.geometry.attributes.position.array;
-                        
-                        // Fill trail positions array
-                        for (let j = 0; j < b.userData.maxTrailLength; j++) {
-                            if (j < b.userData.trailPositions.length) {
-                                const pos = b.userData.trailPositions[j];
-                                positions[j * 3] = pos.x;
-                                positions[j * 3 + 1] = pos.y;
-                                positions[j * 3 + 2] = pos.z;
-                            } else {
-                                // Pad with bullet position if trail not full yet
-                                positions[j * 3] = b.position.x;
-                                positions[j * 3 + 1] = b.position.y;
-                                positions[j * 3 + 2] = b.position.z;
-                            }
-                        }
-                        
-                        trail.geometry.attributes.position.needsUpdate = true;
-                        
-                        // Fade trail based on bullet age
-                        const age = (Date.now() - b.userData.spawnTime) / 1000;
-                        trail.material.opacity = Math.max(0.3, 1.0 - (age / 3));
-                    }
-                }
+            // Update plasma bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                if (!b.userData.velocity) continue;
                 
                 // Move bullet
                 b.position.add(b.userData.velocity);
                 
-                // Also move with inverse thrust (world movement)
-                if (shipSpeed > 0.01) {
-                    b.position.sub(shipVelocity);
-                    
-                    // Also move trail positions
-                    if (b.userData.trailPositions) {
-                        b.userData.trailPositions.forEach(pos => pos.sub(shipVelocity));
-                    }
+                // Scale plasma based on distance from camera for depth perception
+                const distToCamera = b.position.distanceTo(camera.position);
+                const scale = Math.max(0.5, Math.min(2.0, 100 / distToCamera));
+                if (b.userData.core && b.userData.halo) {
+                    b.userData.core.scale.setScalar(scale);
+                    b.userData.halo.scale.setScalar(scale);
                 }
                 
-                // Handle explosion shards (from crystal destruction)
+                // Handle explosion shards
                 if (b.userData.life !== undefined && b.userData.rotation) {
                     b.userData.life -= 0.02;
                     b.material.opacity = b.userData.life;
                     b.material.transparent = true;
                     
-                    // Rotate shards
                     b.rotation.x += b.userData.rotation.x;
                     b.rotation.y += b.userData.rotation.y;
                     b.rotation.z += b.userData.rotation.z;
@@ -641,22 +573,18 @@
                         scene.remove(b);
                         bullets.splice(i, 1);
                     }
-                    return;
+                    continue;
                 }
                 
-                // Remove bullets after 3 seconds
+                // Remove bullets after 3 seconds or too far
                 const age = Date.now() - b.userData.spawnTime;
                 if (age > 3000 || b.position.length() > 2000) {
-                    // Clean up trail
-                    if (b.userData.trailLine) {
-                        scene.remove(b.userData.trailLine);
-                    }
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
-            });
+            }
 
-            // Check collisions
+            // Check collisions with proximity lighting
             checkCollisions();
 
             // Draw thrust visual effect
@@ -698,7 +626,12 @@
                 ship.traverse(node => { if(node.isMesh) node.material.flatShading = false; });
                 scene.add(ship);
                 
-                ship.position.set(0, 0, 0);
+                // Position ship far from camera
+                ship.position.set(0, 0, SHIP_START_DISTANCE);
+                
+                // Scale ship 3x to be visible at distance
+                ship.scale.setScalar(SHIP_SCALE);
+                
                 ship.rotation.set(
                     THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
                     THREE.MathUtils.degToRad(180), // 180° rotation - GLB model is backwards
@@ -715,7 +648,13 @@
                 ship = new THREE.Group();
                 ship.add(placeholder);
                 scene.add(ship);
-                ship.position.set(0, 0, 0);
+                
+                // Position ship far from camera
+                ship.position.set(0, 0, SHIP_START_DISTANCE);
+                
+                // Scale ship 3x to be visible at distance
+                ship.scale.setScalar(SHIP_SCALE);
+                
                 ship.rotation.set(
                     THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
                     THREE.MathUtils.degToRad(180), // 180° rotation - model is backwards
