@@ -24,7 +24,7 @@
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: STREAK-V3</div>
+    <div id="versionBadge">VER: FIXED-V4</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
@@ -71,7 +71,11 @@
         const CAMERA_DISTANCE = 25;
         const CAMERA_HEIGHT = 5;
         const MIN_CAMERA_DISTANCE = 15; // Prevent camera flip
+        const MAX_CAMERA_ROTATION_SPEED = 0.05; // Limit rotation speed to prevent whiplash
         let particleFrameCounter = 0; // Spawn particles every N frames for performance
+
+        // Ship orientation adjustment - change this if bullets/thrust go wrong direction
+        const SHIP_FORWARD = new THREE.Vector3(0, 0, 1); // Try (0,0,-1) if backwards
 
         // Game state
         let score = 0;
@@ -172,8 +176,8 @@
             if (particleFrameCounter % 2 !== 0) return;
             
             // Spawn particles from ship's rear (engine position)
-            // Ship points in -Z direction, so engine is at +Z
-            const engineOffset = new THREE.Vector3(0, 0, 8); // Behind the ship
+            // Engine is opposite direction of forward movement
+            const engineOffset = SHIP_FORWARD.clone().multiplyScalar(-8);
             engineOffset.applyQuaternion(ship.quaternion);
             const particlePos = ship.position.clone().add(engineOffset);
             
@@ -209,7 +213,7 @@
         }
 
         function spawnTarget(x, y, z) {
-            const size = 6 + Math.random() * 4;
+            const size = 12 + Math.random() * 8; // Doubled from 6 + Math.random() * 4
             
             // Create crystalline geometry
             const geometry = Math.random() > 0.5 
@@ -279,8 +283,8 @@
             // Spawn bullet at ship position
             bullet.position.copy(ship.position);
             
-            // Get ship's forward direction (ship now points in -Z direction)
-            const dir = new THREE.Vector3(0, 0, -1);
+            // Get ship's forward direction using configurable vector
+            const dir = SHIP_FORWARD.clone();
             dir.applyQuaternion(ship.quaternion).normalize();
             
             // Add ship's velocity to bullet velocity
@@ -322,6 +326,11 @@
                     if (distance < hitRadius) {
                         // HIT!
                         createCrystalExplosion(target.position.clone(), target.material.color);
+                        
+                        // Clean up bullet trail before removing bullet
+                        if (bullet.userData.trailLine) {
+                            scene.remove(bullet.userData.trailLine);
+                        }
                         
                         // Remove target and bullet
                         scene.remove(target);
@@ -446,23 +455,22 @@
                     shipSpeed *= DECELERATION;
                 }
                 
-                // Calculate ship's forward direction for moving world (-Z is forward)
+                // Calculate ship's forward direction for moving world
                 if (shipSpeed > 0.01) {
-                    const forward = new THREE.Vector3(0, 0, -1);
+                    const forward = SHIP_FORWARD.clone();
                     forward.applyQuaternion(ship.quaternion).normalize();
                     shipVelocity.copy(forward.multiplyScalar(shipSpeed));
                 } else {
                     shipVelocity.set(0, 0, 0);
                 }
                 
-                // Camera behavior - only chase when moving
+                // Camera behavior - ALWAYS use damping, but behavior changes based on speed
+                const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
+                cameraOffset.applyQuaternion(ship.quaternion);
+                const targetCameraPos = ship.position.clone().add(cameraOffset);
+                
                 if (shipSpeed > 0.1) {
-                    // CHASE CAMERA MODE - camera lags behind moving ship
-                    const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
-                    cameraOffset.applyQuaternion(ship.quaternion);
-                    const targetCameraPos = ship.position.clone().add(cameraOffset);
-                    
-                    // Smooth camera position (lerp)
+                    // CHASE CAMERA MODE - both position and look-at lag
                     cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
                     
                     // Enforce minimum distance to prevent flip
@@ -474,15 +482,47 @@
                     
                     camera.position.copy(cameraPosition);
                     
-                    // Smooth camera look-at (lerp) - creates lag for ship movement on screen
-                    cameraLookAt.lerp(ship.position, CAMERA_LOOKAT_DAMPING);
+                    // Smooth camera look-at with rotation speed limit
+                    const targetLookAt = ship.position.clone();
+                    const lookAtDelta = targetLookAt.clone().sub(cameraLookAt);
+                    const lookAtDistance = lookAtDelta.length();
+                    
+                    // Clamp rotation speed to prevent whiplash
+                    if (lookAtDistance > MAX_CAMERA_ROTATION_SPEED) {
+                        lookAtDelta.normalize().multiplyScalar(MAX_CAMERA_ROTATION_SPEED);
+                        cameraLookAt.add(lookAtDelta);
+                    } else {
+                        cameraLookAt.lerp(targetLookAt, CAMERA_LOOKAT_DAMPING);
+                    }
+                    
                     camera.lookAt(cameraLookAt);
                 } else {
-                    // STATIONARY MODE - locked camera like original version
-                    camera.position.set(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
-                    camera.lookAt(0, 0, 0);
-                    cameraPosition.copy(camera.position);
-                    cameraLookAt.copy(new THREE.Vector3(0, 0, 0));
+                    // STATIONARY MODE - position still lags smoothly, but look-at is fixed
+                    cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
+                    
+                    // Enforce minimum distance
+                    const distToShip = cameraPosition.distanceTo(ship.position);
+                    if (distToShip < MIN_CAMERA_DISTANCE) {
+                        const dir = cameraPosition.clone().sub(ship.position).normalize();
+                        cameraPosition.copy(ship.position).add(dir.multiplyScalar(MIN_CAMERA_DISTANCE));
+                    }
+                    
+                    camera.position.copy(cameraPosition);
+                    
+                    // Look-at still lags with rotation speed limit for smooth rotation tracking
+                    const targetLookAt = ship.position.clone();
+                    const lookAtDelta = targetLookAt.clone().sub(cameraLookAt);
+                    const lookAtDistance = lookAtDelta.length();
+                    
+                    // Clamp rotation speed
+                    if (lookAtDistance > MAX_CAMERA_ROTATION_SPEED) {
+                        lookAtDelta.normalize().multiplyScalar(MAX_CAMERA_ROTATION_SPEED);
+                        cameraLookAt.add(lookAtDelta);
+                    } else {
+                        cameraLookAt.lerp(targetLookAt, CAMERA_LOOKAT_DAMPING);
+                    }
+                    
+                    camera.lookAt(cameraLookAt);
                 }
                 
                 // Ship stays at origin
@@ -661,7 +701,7 @@
                 ship.position.set(0, 0, 0);
                 ship.rotation.set(
                     THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
-                    0,  // No 180° rotation - ship now points away from camera
+                    THREE.MathUtils.degToRad(180), // 180° rotation - GLB model is backwards
                     0   // No roll
                 );
             }, undefined, (error) => {
@@ -678,7 +718,7 @@
                 ship.position.set(0, 0, 0);
                 ship.rotation.set(
                     THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
-                    0,  // No 180° rotation - ship now points away from camera
+                    THREE.MathUtils.degToRad(180), // 180° rotation - model is backwards
                     0   // No roll
                 );
             });
