@@ -24,7 +24,7 @@
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: CRYSTAL-V2</div>
+    <div id="versionBadge">VER: STREAK-V3</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
@@ -66,10 +66,12 @@
         // Chase camera variables
         let cameraPosition = new THREE.Vector3(0, 5, 25);
         let cameraLookAt = new THREE.Vector3(0, 0, 0);
-        const CAMERA_POSITION_DAMPING = 0.08;
-        const CAMERA_LOOKAT_DAMPING = 0.05;
+        const CAMERA_POSITION_DAMPING = 0.10; // Increased from 0.08 (20% slower)
+        const CAMERA_LOOKAT_DAMPING = 0.06;   // Increased from 0.05 (20% slower)
         const CAMERA_DISTANCE = 25;
         const CAMERA_HEIGHT = 5;
+        const MIN_CAMERA_DISTANCE = 15; // Prevent camera flip
+        let particleFrameCounter = 0; // Spawn particles every N frames for performance
 
         // Game state
         let score = 0;
@@ -165,14 +167,19 @@
         function spawnThrustParticles() {
             if (!ship || !isThrusting) return;
             
+            // Only spawn particles every 2 frames for performance
+            particleFrameCounter++;
+            if (particleFrameCounter % 2 !== 0) return;
+            
             // Spawn particles from ship's rear (engine position)
-            // Ship's local rear is at -Z after 180° rotation, so we want +Z in local space
-            const engineOffset = new THREE.Vector3(0, 0, -8); // Behind the ship
+            // Ship points in -Z direction, so engine is at +Z
+            const engineOffset = new THREE.Vector3(0, 0, 8); // Behind the ship
             engineOffset.applyQuaternion(ship.quaternion);
             const particlePos = ship.position.clone().add(engineOffset);
             
-            // Create 2-3 particles per frame when thrusting
-            for (let i = 0; i < 3; i++) {
+            // Create 1-2 particles (reduced from 3 for performance)
+            const numParticles = Math.random() > 0.5 ? 2 : 1;
+            for (let i = 0; i < numParticles; i++) {
                 const particle = new THREE.Mesh(
                     new THREE.SphereGeometry(0.8 + Math.random() * 0.4, 8, 8),
                     new THREE.MeshBasicMaterial({ 
@@ -256,31 +263,53 @@
         function fireLaser() {
             if (!ship) return;
             
-            // Create small bright pellet with glow
-            const bGeo = new THREE.SphereGeometry(1.5, 16, 16);
+            // Create bullet sphere - larger and more visible
+            const bGeo = new THREE.SphereGeometry(2.5, 16, 16);
             const bMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 1.0
             });
-            const b = new THREE.Mesh(bGeo, bMat);
+            const bullet = new THREE.Mesh(bGeo, bMat);
             
-            // Add bright point light
-            const bulletLight = new THREE.PointLight(0x00ffff, 150, 50);
-            b.add(bulletLight);
+            // Add bright point light to bullet
+            const bulletLight = new THREE.PointLight(0x00ffff, 200, 60);
+            bullet.add(bulletLight);
             
-            // Spawn pellet at ship position
-            b.position.copy(ship.position);
+            // Spawn bullet at ship position
+            bullet.position.copy(ship.position);
             
-            // Get ship's forward direction (ship's local +Z after 180° rotation)
-            const dir = new THREE.Vector3(0, 0, 1);
+            // Get ship's forward direction (ship now points in -Z direction)
+            const dir = new THREE.Vector3(0, 0, -1);
             dir.applyQuaternion(ship.quaternion).normalize();
             
             // Add ship's velocity to bullet velocity
             const bulletSpeed = 30;
-            b.userData.velocity = dir.multiplyScalar(bulletSpeed).add(shipVelocity);
-            b.userData.spawnTime = Date.now();
+            bullet.userData.velocity = dir.multiplyScalar(bulletSpeed).add(shipVelocity);
+            bullet.userData.spawnTime = Date.now();
             
-            scene.add(b);
-            bullets.push(b);
+            // Trail tracking - store last N positions
+            bullet.userData.trailPositions = [];
+            bullet.userData.maxTrailLength = 12; // Number of trail segments
+            
+            // Create the trail line
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(bullet.userData.maxTrailLength * 3);
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            
+            const trailMaterial = new THREE.LineBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.8,
+                linewidth: 3
+            });
+            
+            const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+            scene.add(trailLine);
+            bullet.userData.trailLine = trailLine;
+            
+            scene.add(bullet);
+            bullets.push(bullet);
         }
 
         function checkCollisions() {
@@ -417,33 +446,50 @@
                     shipSpeed *= DECELERATION;
                 }
                 
-                // Calculate ship's forward direction for moving world
+                // Calculate ship's forward direction for moving world (-Z is forward)
                 if (shipSpeed > 0.01) {
-                    const forward = new THREE.Vector3(0, 0, 1);
+                    const forward = new THREE.Vector3(0, 0, -1);
                     forward.applyQuaternion(ship.quaternion).normalize();
                     shipVelocity.copy(forward.multiplyScalar(shipSpeed));
                 } else {
                     shipVelocity.set(0, 0, 0);
                 }
                 
-                // Chase camera with position AND rotation lag
-                const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
-                cameraOffset.applyQuaternion(ship.quaternion);
-                const targetCameraPos = ship.position.clone().add(cameraOffset);
+                // Camera behavior - only chase when moving
+                if (shipSpeed > 0.1) {
+                    // CHASE CAMERA MODE - camera lags behind moving ship
+                    const cameraOffset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
+                    cameraOffset.applyQuaternion(ship.quaternion);
+                    const targetCameraPos = ship.position.clone().add(cameraOffset);
+                    
+                    // Smooth camera position (lerp)
+                    cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
+                    
+                    // Enforce minimum distance to prevent flip
+                    const distToShip = cameraPosition.distanceTo(ship.position);
+                    if (distToShip < MIN_CAMERA_DISTANCE) {
+                        const dir = cameraPosition.clone().sub(ship.position).normalize();
+                        cameraPosition.copy(ship.position).add(dir.multiplyScalar(MIN_CAMERA_DISTANCE));
+                    }
+                    
+                    camera.position.copy(cameraPosition);
+                    
+                    // Smooth camera look-at (lerp) - creates lag for ship movement on screen
+                    cameraLookAt.lerp(ship.position, CAMERA_LOOKAT_DAMPING);
+                    camera.lookAt(cameraLookAt);
+                } else {
+                    // STATIONARY MODE - locked camera like original version
+                    camera.position.set(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
+                    camera.lookAt(0, 0, 0);
+                    cameraPosition.copy(camera.position);
+                    cameraLookAt.copy(new THREE.Vector3(0, 0, 0));
+                }
                 
-                // Smooth camera position (lerp)
-                cameraPosition.lerp(targetCameraPos, CAMERA_POSITION_DAMPING);
-                camera.position.copy(cameraPosition);
-                
-                // Smooth camera look-at (lerp) - this creates the lag for ship movement on screen
-                cameraLookAt.lerp(ship.position, CAMERA_LOOKAT_DAMPING);
-                camera.lookAt(cameraLookAt);
-                
-                // Ship stays at origin, camera follows with lag
+                // Ship stays at origin
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
                 
                 // Update debug info
-                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Thrusting: ${isThrusting ? 'YES' : 'NO'}<br>Targets: ${targets.length}`;
+                debug.innerHTML = `Speed: ${shipSpeed.toFixed(2)}<br>Thrusting: ${isThrusting ? 'YES' : 'NO'}<br>Targets: ${targets.length}<br>Mode: ${shipSpeed > 0.1 ? 'CHASE' : 'LOCKED'}`;
             }
 
             // Rotate crystals
@@ -486,9 +532,46 @@
                 p.position.y -= 0.05;
             });
 
-            // Update bullets
+            // Update bullets with trail rendering
             bullets.forEach((b, i) => {
                 if (!b.userData.velocity) return;
+                
+                // Store current position in trail
+                if (b.userData.trailPositions !== undefined) {
+                    b.userData.trailPositions.push(b.position.clone());
+                    
+                    // Limit trail length
+                    if (b.userData.trailPositions.length > b.userData.maxTrailLength) {
+                        b.userData.trailPositions.shift();
+                    }
+                    
+                    // Update trail line geometry
+                    const trail = b.userData.trailLine;
+                    if (trail) {
+                        const positions = trail.geometry.attributes.position.array;
+                        
+                        // Fill trail positions array
+                        for (let j = 0; j < b.userData.maxTrailLength; j++) {
+                            if (j < b.userData.trailPositions.length) {
+                                const pos = b.userData.trailPositions[j];
+                                positions[j * 3] = pos.x;
+                                positions[j * 3 + 1] = pos.y;
+                                positions[j * 3 + 2] = pos.z;
+                            } else {
+                                // Pad with bullet position if trail not full yet
+                                positions[j * 3] = b.position.x;
+                                positions[j * 3 + 1] = b.position.y;
+                                positions[j * 3 + 2] = b.position.z;
+                            }
+                        }
+                        
+                        trail.geometry.attributes.position.needsUpdate = true;
+                        
+                        // Fade trail based on bullet age
+                        const age = (Date.now() - b.userData.spawnTime) / 1000;
+                        trail.material.opacity = Math.max(0.3, 1.0 - (age / 3));
+                    }
+                }
                 
                 // Move bullet
                 b.position.add(b.userData.velocity);
@@ -496,9 +579,14 @@
                 // Also move with inverse thrust (world movement)
                 if (shipSpeed > 0.01) {
                     b.position.sub(shipVelocity);
+                    
+                    // Also move trail positions
+                    if (b.userData.trailPositions) {
+                        b.userData.trailPositions.forEach(pos => pos.sub(shipVelocity));
+                    }
                 }
                 
-                // Fade explosion shards
+                // Handle explosion shards (from crystal destruction)
                 if (b.userData.life !== undefined && b.userData.rotation) {
                     b.userData.life -= 0.02;
                     b.material.opacity = b.userData.life;
@@ -519,6 +607,10 @@
                 // Remove bullets after 3 seconds
                 const age = Date.now() - b.userData.spawnTime;
                 if (age > 3000 || b.position.length() > 2000) {
+                    // Clean up trail
+                    if (b.userData.trailLine) {
+                        scene.remove(b.userData.trailLine);
+                    }
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
@@ -568,9 +660,9 @@
                 
                 ship.position.set(0, 0, 0);
                 ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20),
-                    THREE.MathUtils.degToRad(180),
-                    0
+                    THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
+                    0,  // No 180° rotation - ship now points away from camera
+                    0   // No roll
                 );
             }, undefined, (error) => {
                 console.error('Error loading ship model:', error);
@@ -585,9 +677,9 @@
                 scene.add(ship);
                 ship.position.set(0, 0, 0);
                 ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20),
-                    THREE.MathUtils.degToRad(180),
-                    0
+                    THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees to see top of ship
+                    0,  // No 180° rotation - ship now points away from camera
+                    0   // No roll
                 );
             });
             
