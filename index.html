@@ -49,7 +49,7 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
-            camera.position.set(0, 5, 25); // Camera positioned to view ship from behind and above
+            camera.position.set(0, 5, 25);
             camera.lookAt(0, 0, 0);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -65,7 +65,7 @@
             shipLight = new THREE.PointLight(0x00ffff, 150, 100);
             scene.add(shipLight);
 
-            // Create Stars
+            // Stars
             const vertices = [];
             for (let i = 0; i < 3000; i++) {
                 vertices.push(
@@ -78,10 +78,7 @@
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
 
-            // TEST THREAT: Spawn behind the camera
-            // Camera is at (0, 5, 25) looking at origin
-            // Threat needs Z > 25 to be behind camera
-            spawnThreat(0, 5, 100); // Directly behind camera
+            spawnThreat(0, 5, 100);
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('touchstart', fireLaser);
@@ -104,27 +101,36 @@
 
         function fireLaser() {
             if (!ship) return;
-            
-            // Create small bright pellet
-            const bGeo = new THREE.SphereGeometry(1.5, 16, 16);
-            const bMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff
-            });
-            const b = new THREE.Mesh(bGeo, bMat);
-            
-            // Add a bright point light to make pellet glow
-            const bulletLight = new THREE.PointLight(0x00ffff, 100, 50);
+
+            // ── Direction the ship is facing ──
+            const forward = new THREE.Vector3(0, 0, 1);
+            forward.applyQuaternion(ship.quaternion).normalize();
+
+            // ── Spawn right at/near the nose ──
+            // Adjust this number (3.5–8.0 range usually works) depending on your ship model length
+            const noseOffset = 5.0;   // ← tune this value ↑ if still spawning too far back
+
+            const spawnPos = ship.position.clone().add(forward.multiplyScalar(noseOffset));
+
+            // Small bright core
+            const b = new THREE.Mesh(
+                new THREE.SphereGeometry(0.9, 12, 10),  // small size
+                new THREE.MeshBasicMaterial({
+                    color: 0x88ffff,
+                    transparent: true,
+                    opacity: 0.95,
+                    blending: THREE.AdditiveBlending   // makes it glow brightly
+                })
+            );
+
+            b.position.copy(spawnPos);
+
+            // Strong glow light attached to bullet
+            const bulletLight = new THREE.PointLight(0x88ffff, 800, 45);  // very bright, decent range
+            bulletLight.position.set(0,0,0);
             b.add(bulletLight);
-            
-            // Spawn pellet right at ship position
-            b.position.copy(ship.position);
-            
-            // Get ship's forward direction in world space
-            // Ship's local forward after 180° rotation is +Z
-            const dir = new THREE.Vector3(0, 0, 1);
-            dir.applyQuaternion(ship.quaternion).normalize();
-            
-            b.userData.velocity = dir.multiplyScalar(25);
+
+            b.userData.velocity = forward.multiplyScalar(50);  // faster = more dynamic feel
             b.userData.trail = [];
             scene.add(b);
             bullets.push(b);
@@ -136,46 +142,34 @@
             const h = overlay.height;
 
             threats.forEach(t => {
-                // Transform threat position to camera space
                 const threatPosWorld = t.position.clone();
                 const threatPosCamera = threatPosWorld.clone().sub(camera.position);
                 
-                // Transform to camera's local coordinate system
                 const cameraWorldMatrix = new THREE.Matrix4();
                 cameraWorldMatrix.extractRotation(camera.matrixWorld);
                 const cameraInverseRotation = cameraWorldMatrix.clone().invert();
                 threatPosCamera.applyMatrix4(cameraInverseRotation);
 
-                // Camera looks down -Z, so threats with positive Z are behind the camera
                 const isBehindCamera = threatPosCamera.z > 0;
 
                 if (isBehindCamera) {
-                    // Calculate distance for intensity
                     const distance = threatPosWorld.distanceTo(camera.position);
                     const opacity = Math.max(0.1, Math.min(1.0, 1.0 - (distance / 400)));
 
-                    // Get angular position (direction from camera to threat)
-                    // In camera space: X is right, Y is up, Z is behind
                     const angleHorizontal = Math.atan2(threatPosCamera.x, threatPosCamera.z);
                     const angleVertical = Math.atan2(threatPosCamera.y, threatPosCamera.z);
                     
-                    // How far off-axis is the threat?
                     const offAxisDistance = Math.sqrt(threatPosCamera.x**2 + threatPosCamera.y**2);
                     const behindDistance = Math.abs(threatPosCamera.z);
                     
-                    // If directly behind (small offAxis relative to distance), bloom spreads around perimeter
-                    // If off to the side, bloom concentrates on that edge
                     const spreadFactor = Math.max(0.1, 1.0 - (offAxisDistance / behindDistance));
                     
                     if (spreadFactor > 0.7) {
-                        // Nearly directly behind - bloom around entire perimeter
                         drawPerimeterBloom(w, h, opacity, spreadFactor);
                     } else {
-                        // Off to the side - concentrate bloom
                         drawDirectionalBloom(w, h, angleHorizontal, angleVertical, opacity, offAxisDistance, behindDistance);
                     }
 
-                    // Debug info
                     debug.innerHTML = `
                         Behind Camera: ${isBehindCamera}<br>
                         Camera Space: x:${threatPosCamera.x.toFixed(1)} y:${threatPosCamera.y.toFixed(1)} z:${threatPosCamera.z.toFixed(1)}<br>
@@ -187,12 +181,9 @@
         }
 
         function drawPerimeterBloom(w, h, opacity, spreadFactor) {
-            // Draw bloom around entire perimeter when threat is directly behind
-            // Center of bloom is OFF-SCREEN, only the glow bleeds onto visible area
-            const bloomDepth = Math.min(w, h) * 0.6; // How far bloom penetrates into screen
-            const bloomRadius = Math.min(w, h) * 1.2; // Large radius so center is way off-screen
+            const bloomDepth = Math.min(w, h) * 0.6;
+            const bloomRadius = Math.min(w, h) * 1.2;
             
-            // Top edge - gradient starts above screen
             const gradTop = ctx.createRadialGradient(w/2, -bloomRadius * 0.5, 0, w/2, -bloomRadius * 0.5, bloomRadius);
             gradTop.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
             gradTop.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
@@ -200,7 +191,6 @@
             ctx.fillStyle = gradTop;
             ctx.fillRect(0, 0, w, bloomDepth);
             
-            // Bottom edge
             const gradBottom = ctx.createRadialGradient(w/2, h + bloomRadius * 0.5, 0, w/2, h + bloomRadius * 0.5, bloomRadius);
             gradBottom.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
             gradBottom.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
@@ -208,7 +198,6 @@
             ctx.fillStyle = gradBottom;
             ctx.fillRect(0, h - bloomDepth, w, bloomDepth);
             
-            // Left edge
             const gradLeft = ctx.createRadialGradient(-bloomRadius * 0.5, h/2, 0, -bloomRadius * 0.5, h/2, bloomRadius);
             gradLeft.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
             gradLeft.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
@@ -216,7 +205,6 @@
             ctx.fillStyle = gradLeft;
             ctx.fillRect(0, 0, bloomDepth, h);
             
-            // Right edge
             const gradRight = ctx.createRadialGradient(w + bloomRadius * 0.5, h/2, 0, w + bloomRadius * 0.5, h/2, bloomRadius);
             gradRight.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
             gradRight.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
@@ -226,25 +214,20 @@
         }
 
         function drawDirectionalBloom(w, h, angleH, angleV, opacity, offAxis, behind) {
-            // Map camera-space angles to screen position
-            // Bloom center should be OFF-SCREEN, beyond the perimeter
-            
-            const normH = angleH / Math.PI; // -1 to 1
-            const normV = angleV / Math.PI; // -1 to 1
+            const normH = angleH / Math.PI;
+            const normV = angleV / Math.PI;
             
             const absH = Math.abs(normH);
             const absV = Math.abs(normV);
             
             let glowX, glowY;
-            const bloomRadius = Math.min(w, h) * 1.5; // Much larger bloom
-            const edgeOffset = bloomRadius * 0.6; // How far off-screen the center is
+            const bloomRadius = Math.min(w, h) * 1.5;
+            const edgeOffset = bloomRadius * 0.6;
             
             if (absH > absV) {
-                // Horizontal edge (left or right)
                 glowX = normH > 0 ? w + edgeOffset : -edgeOffset;
                 glowY = h/2 - (normV * h/2);
             } else {
-                // Vertical edge (top or bottom)  
                 glowX = w/2 + (normH * w/2);
                 glowY = normV > 0 ? -edgeOffset : h + edgeOffset;
             }
@@ -260,14 +243,12 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // AUTOMATIC TEST SWEEP: Move the threat in a circle behind the camera
             if (threats.length > 0) {
                 testAngle += 0.01;
                 const radius = 60;
-                // Camera at z=25, keep threat z > 25 (behind camera)
                 threats[0].position.x = Math.sin(testAngle) * radius;
                 threats[0].position.y = 5 + Math.cos(testAngle) * radius * 0.5;
-                threats[0].position.z = 100 + Math.sin(testAngle * 0.5) * 30; // Stay behind (70-130)
+                threats[0].position.z = 100 + Math.sin(testAngle * 0.5) * 30;
             }
 
             if (ship && isInitialized) {
@@ -276,21 +257,20 @@
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
             }
 
-            // Update bullets with trails
             bullets.forEach((b, i) => {
-                // Store trail position
                 if (!b.userData.trail) b.userData.trail = [];
                 b.userData.trail.push(b.position.clone());
-                if (b.userData.trail.length > 10) b.userData.trail.shift();
+                if (b.userData.trail.length > 8) b.userData.trail.shift();
                 
-                // Move bullet
                 b.position.add(b.userData.velocity);
                 
-                // Fade bullet over distance
-                const distTraveled = b.userData.velocity.length() * b.userData.trail.length;
-                b.material.opacity = Math.max(0.3, 1.0 - (distTraveled / 500));
+                // Optional gentle fade at long distance
+                const distTraveled = b.position.distanceTo(ship ? ship.position : new THREE.Vector3());
+                if (distTraveled > 800) {
+                    b.material.opacity = Math.max(0.2, 1.0 - (distTraveled - 800) / 1200);
+                }
                 
-                if (b.position.length() > 2000) {
+                if (b.position.length() > 2500) {
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
@@ -331,14 +311,12 @@
                 ship.traverse(node => { if(node.isMesh) node.material.flatShading = false; });
                 scene.add(ship);
                 
-                // Position ship at origin
                 ship.position.set(0, 0, 0);
                 
-                // Rotate ship 180° around Y (so nose points away) then pitch up 20°
                 ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20), // Pitch up 20 degrees
-                    THREE.MathUtils.degToRad(180),  // Turn around 180°
-                    0   // No roll
+                    THREE.MathUtils.degToRad(-20),
+                    THREE.MathUtils.degToRad(180),
+                    0
                 );
             });
             window.addEventListener('deviceorientation', (e) => {
