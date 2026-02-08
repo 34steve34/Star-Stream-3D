@@ -17,7 +17,7 @@
 <body>
     <button id="zeroBtn">ZERO</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: BLOOM-V10</div>
+    <div id="versionBadge">VER: BLOOM-V11</div>
     <canvas id="overlay"></canvas>
     <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
 
@@ -122,11 +122,11 @@
             const dir = new THREE.Vector3(0, 0, 1);
             dir.applyQuaternion(ship.quaternion).normalize();
             
-            // Offset from ship center to nose, plus half bullet length
-            // so entire bullet appears ahead of ship
-            const noseOffset = 8;
-            const totalOffset = noseOffset + (bulletLength / 2);
-            b.position.copy(ship.position).add(dir.clone().multiplyScalar(totalOffset));
+            // Spawn bullet near ship nose
+            // Bullet is 20 units long, centered on position, so 10 units extend backward
+            // Use small offset so back of bullet is at nose
+            const spawnOffset = 2;
+            b.position.copy(ship.position).add(dir.clone().multiplyScalar(spawnOffset));
             
             // Orient bullet along its velocity direction
             b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
