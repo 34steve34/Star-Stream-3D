@@ -17,7 +17,7 @@
 <body>
     <button id="zeroBtn">ZERO</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: BLOOM-V7</div>
+    <div id="versionBadge">VER: BLOOM-V9</div>
     <canvas id="overlay"></canvas>
     <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
 
@@ -78,9 +78,9 @@
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
             scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
 
-            // TEST THREAT: Start it directly behind the camera
-            // Camera looks down -Z, so threat behind camera = positive Z relative to camera
-            spawnThreat(0, 15, -200); // Will be behind camera view
+            // TEST THREAT: Spawn behind the camera
+            // Camera is at (0, 5, 25), so threat needs Z > 25 to be behind
+            spawnThreat(0, 5, 100); // Start directly behind camera
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('touchstart', fireLaser);
@@ -116,13 +116,15 @@
             const bulletLight = new THREE.PointLight(0x00ffff, 50, 30);
             b.add(bulletLight);
             
-            // Start bullet at ship's exact position
-            b.position.copy(ship.position);
-            
             // Get ship's forward direction in world space
             // Ship's local forward after 180° rotation is +Z
             const dir = new THREE.Vector3(0, 0, 1);
             dir.applyQuaternion(ship.quaternion).normalize();
+            
+            // Spawn bullet at nose (offset forward from ship center)
+            // Adjust this offset value based on your ship model's size
+            const noseOffset = 8; // Distance from ship center to nose
+            b.position.copy(ship.position).add(dir.clone().multiplyScalar(noseOffset));
             
             // Orient bullet along its velocity direction
             b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
@@ -262,11 +264,11 @@
             // AUTOMATIC TEST SWEEP: Move the threat in a circle behind the camera
             if (threats.length > 0) {
                 testAngle += 0.01;
-                const radius = 100;
-                // Keep threat in the "behind camera" hemisphere
+                const radius = 60;
+                // Keep threat behind camera (camera is at z=25, so keep threat z > 25)
                 threats[0].position.x = Math.sin(testAngle) * radius;
-                threats[0].position.y = 15 + Math.cos(testAngle) * radius * 0.5;
-                threats[0].position.z = -200 + Math.cos(testAngle) * 50; // Vary depth
+                threats[0].position.y = 5 + Math.cos(testAngle) * radius * 0.5;
+                threats[0].position.z = 100 + Math.sin(testAngle * 0.5) * 30; // Vary depth, stay behind
             }
 
             if (ship && isInitialized) {
