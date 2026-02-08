@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Bloom Test V6</title>
+    <title>Star Stream - Bloom Test V7</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -272,9 +272,8 @@
             }
 
             if (ship && isInitialized) {
-                // Rotate ship using local axes (relative to ship's current orientation)
-                ship.rotateX(-currentVelocity.p);
-                ship.rotateY(-currentVelocity.y);
+                ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
+                ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
             }
 
