@@ -1,333 +1,44 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Bloom Test V6</title>
-    <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
-        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 20; font-size: 12px; cursor: pointer; }
-        button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #debug { position: absolute; top: 50px; left: 10px; font-size: 11px; pointer-events: none; color: #fff; line-height: 1.4; }
-        #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); padding: 5px; border: 1px solid #0f0; font-size: 12px; color: #0f0; }
-    </style>
-</head>
-<body>
-    <button id="zeroBtn">ZERO</button>
-    <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: BLOOM-V13</div>
-    <canvas id="overlay"></canvas>
-    <div id="ui"><button id="startBtn">ENGAGE TEST</button></div>
+function fireLaser() {
+    if (!ship) return;
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
+    // Direction ship is pointing
+    const forward = new THREE.Vector3(0, 0, 1);
+    forward.applyQuaternion(ship.quaternion).normalize();
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    // Spawn at nose — tune 5.0 if needed (4.0–7.0 range usually good)
+    const noseOffset = 5.0;
+    const spawnPos = ship.position.clone().add(forward.clone().multiplyScalar(noseOffset));
 
-        let scene, camera, renderer, ship, shipLight;
-        let threats = [];
-        let bullets = [];
-        let phoneZero = { beta: 0, gamma: 0 };
-        let currentVelocity = { p: 0, y: 0 };
-        let isInitialized = false;
-        let testAngle = 0;
+    // ── Main bullet group ──
+    const bulletGroup = new THREE.Group();
+    bulletGroup.position.copy(spawnPos);
 
-        const overlay = document.getElementById('overlay');
-        const ctx = overlay.getContext('2d');
-        const debug = document.getElementById('debug');
+    // Tiny solid core (prevents total disappearance)
+    const coreGeo = new THREE.SphereGeometry(0.7, 8, 6);
+    const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    bulletGroup.add(core);
 
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
-            camera.position.set(0, 5, 25);
-            camera.lookAt(0, 0, 0);
-            
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            document.body.appendChild(renderer.domElement);
+    // Bright additive glow layer
+    const glowGeo = new THREE.SphereGeometry(1.6, 12, 10);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x99ffff,
+        transparent: true,
+        opacity: 1.0,
+        blending: THREE.AdditiveBlending
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    bulletGroup.add(glow);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.3));
-            const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-            sun.position.set(10, 20, 10);
-            scene.add(sun);
+    // Light (slightly toned down but still strong)
+    const bulletLight = new THREE.PointLight(0x88ffff, 500, 60);
+    bulletLight.position.set(0, 0, 0);
+    bulletGroup.add(bulletLight);
 
-            shipLight = new THREE.PointLight(0x00ffff, 150, 100);
-            scene.add(shipLight);
-
-            // Stars
-            const vertices = [];
-            for (let i = 0; i < 3000; i++) {
-                vertices.push(
-                    THREE.MathUtils.randFloatSpread(2000), 
-                    THREE.MathUtils.randFloatSpread(2000), 
-                    THREE.MathUtils.randFloatSpread(2000)
-                );
-            }
-            const starGeo = new THREE.BufferGeometry();
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2 })));
-
-            spawnThreat(0, 5, 100);
-
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('touchstart', fireLaser);
-            animate();
-        }
-
-        function spawnThreat(x, y, z) {
-            const mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(8, 32, 32),
-                new THREE.MeshStandardMaterial({ 
-                    color: 0xff0000, 
-                    emissive: 0x440000,
-                    emissiveIntensity: 0.5
-                })
-            );
-            mesh.position.set(x, y, z);
-            scene.add(mesh);
-            threats.push(mesh);
-        }
-
-        function fireLaser() {
-            if (!ship) return;
-
-            // ── Direction the ship is facing ──
-            const forward = new THREE.Vector3(0, 0, 1);
-            forward.applyQuaternion(ship.quaternion).normalize();
-
-            // ── Spawn right at/near the nose ──
-            // Adjust this number (3.5–8.0 range usually works) depending on your ship model length
-            const noseOffset = 5.0;   // ← tune this value ↑ if still spawning too far back
-
-            const spawnPos = ship.position.clone().add(forward.multiplyScalar(noseOffset));
-
-            // Small bright core
-            const b = new THREE.Mesh(
-                new THREE.SphereGeometry(0.9, 12, 10),  // small size
-                new THREE.MeshBasicMaterial({
-                    color: 0x88ffff,
-                    transparent: true,
-                    opacity: 0.95,
-                    blending: THREE.AdditiveBlending   // makes it glow brightly
-                })
-            );
-
-            b.position.copy(spawnPos);
-
-            // Strong glow light attached to bullet
-            const bulletLight = new THREE.PointLight(0x88ffff, 800, 45);  // very bright, decent range
-            bulletLight.position.set(0,0,0);
-            b.add(bulletLight);
-
-            b.userData.velocity = forward.multiplyScalar(50);  // faster = more dynamic feel
-            b.userData.trail = [];
-            scene.add(b);
-            bullets.push(b);
-        }
-
-        function drawBloom() {
-            ctx.clearRect(0, 0, overlay.width, overlay.height);
-            const w = overlay.width;
-            const h = overlay.height;
-
-            threats.forEach(t => {
-                const threatPosWorld = t.position.clone();
-                const threatPosCamera = threatPosWorld.clone().sub(camera.position);
-                
-                const cameraWorldMatrix = new THREE.Matrix4();
-                cameraWorldMatrix.extractRotation(camera.matrixWorld);
-                const cameraInverseRotation = cameraWorldMatrix.clone().invert();
-                threatPosCamera.applyMatrix4(cameraInverseRotation);
-
-                const isBehindCamera = threatPosCamera.z > 0;
-
-                if (isBehindCamera) {
-                    const distance = threatPosWorld.distanceTo(camera.position);
-                    const opacity = Math.max(0.1, Math.min(1.0, 1.0 - (distance / 400)));
-
-                    const angleHorizontal = Math.atan2(threatPosCamera.x, threatPosCamera.z);
-                    const angleVertical = Math.atan2(threatPosCamera.y, threatPosCamera.z);
-                    
-                    const offAxisDistance = Math.sqrt(threatPosCamera.x**2 + threatPosCamera.y**2);
-                    const behindDistance = Math.abs(threatPosCamera.z);
-                    
-                    const spreadFactor = Math.max(0.1, 1.0 - (offAxisDistance / behindDistance));
-                    
-                    if (spreadFactor > 0.7) {
-                        drawPerimeterBloom(w, h, opacity, spreadFactor);
-                    } else {
-                        drawDirectionalBloom(w, h, angleHorizontal, angleVertical, opacity, offAxisDistance, behindDistance);
-                    }
-
-                    debug.innerHTML = `
-                        Behind Camera: ${isBehindCamera}<br>
-                        Camera Space: x:${threatPosCamera.x.toFixed(1)} y:${threatPosCamera.y.toFixed(1)} z:${threatPosCamera.z.toFixed(1)}<br>
-                        Distance: ${distance.toFixed(1)}<br>
-                        Spread Factor: ${spreadFactor.toFixed(2)}
-                    `;
-                }
-            });
-        }
-
-        function drawPerimeterBloom(w, h, opacity, spreadFactor) {
-            const bloomDepth = Math.min(w, h) * 0.6;
-            const bloomRadius = Math.min(w, h) * 1.2;
-            
-            const gradTop = ctx.createRadialGradient(w/2, -bloomRadius * 0.5, 0, w/2, -bloomRadius * 0.5, bloomRadius);
-            gradTop.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
-            gradTop.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
-            gradTop.addColorStop(1, 'rgba(255, 120, 0, 0)');
-            ctx.fillStyle = gradTop;
-            ctx.fillRect(0, 0, w, bloomDepth);
-            
-            const gradBottom = ctx.createRadialGradient(w/2, h + bloomRadius * 0.5, 0, w/2, h + bloomRadius * 0.5, bloomRadius);
-            gradBottom.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
-            gradBottom.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
-            gradBottom.addColorStop(1, 'rgba(255, 120, 0, 0)');
-            ctx.fillStyle = gradBottom;
-            ctx.fillRect(0, h - bloomDepth, w, bloomDepth);
-            
-            const gradLeft = ctx.createRadialGradient(-bloomRadius * 0.5, h/2, 0, -bloomRadius * 0.5, h/2, bloomRadius);
-            gradLeft.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
-            gradLeft.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
-            gradLeft.addColorStop(1, 'rgba(255, 120, 0, 0)');
-            ctx.fillStyle = gradLeft;
-            ctx.fillRect(0, 0, bloomDepth, h);
-            
-            const gradRight = ctx.createRadialGradient(w + bloomRadius * 0.5, h/2, 0, w + bloomRadius * 0.5, h/2, bloomRadius);
-            gradRight.addColorStop(0.3, `rgba(255, 120, 0, ${opacity})`);
-            gradRight.addColorStop(0.7, `rgba(255, 120, 0, ${opacity * 0.5})`);
-            gradRight.addColorStop(1, 'rgba(255, 120, 0, 0)');
-            ctx.fillStyle = gradRight;
-            ctx.fillRect(w - bloomDepth, 0, bloomDepth, h);
-        }
-
-        function drawDirectionalBloom(w, h, angleH, angleV, opacity, offAxis, behind) {
-            const normH = angleH / Math.PI;
-            const normV = angleV / Math.PI;
-            
-            const absH = Math.abs(normH);
-            const absV = Math.abs(normV);
-            
-            let glowX, glowY;
-            const bloomRadius = Math.min(w, h) * 1.5;
-            const edgeOffset = bloomRadius * 0.6;
-            
-            if (absH > absV) {
-                glowX = normH > 0 ? w + edgeOffset : -edgeOffset;
-                glowY = h/2 - (normV * h/2);
-            } else {
-                glowX = w/2 + (normH * w/2);
-                glowY = normV > 0 ? -edgeOffset : h + edgeOffset;
-            }
-            
-            const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, bloomRadius);
-            grad.addColorStop(0.2, `rgba(255, 120, 0, ${opacity})`);
-            grad.addColorStop(0.6, `rgba(255, 120, 0, ${opacity * 0.6})`);
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, w, h);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            if (threats.length > 0) {
-                testAngle += 0.01;
-                const radius = 60;
-                threats[0].position.x = Math.sin(testAngle) * radius;
-                threats[0].position.y = 5 + Math.cos(testAngle) * radius * 0.5;
-                threats[0].position.z = 100 + Math.sin(testAngle * 0.5) * 30;
-            }
-
-            if (ship && isInitialized) {
-                ship.rotateOnWorldAxis(new THREE.Vector3(1, 0, 0), -currentVelocity.p);
-                ship.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), -currentVelocity.y);
-                shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 10));
-            }
-
-            bullets.forEach((b, i) => {
-                if (!b.userData.trail) b.userData.trail = [];
-                b.userData.trail.push(b.position.clone());
-                if (b.userData.trail.length > 8) b.userData.trail.shift();
-                
-                b.position.add(b.userData.velocity);
-                
-                // Optional gentle fade at long distance
-                const distTraveled = b.position.distanceTo(ship ? ship.position : new THREE.Vector3());
-                if (distTraveled > 800) {
-                    b.material.opacity = Math.max(0.2, 1.0 - (distTraveled - 800) / 1200);
-                }
-                
-                if (b.position.length() > 2500) {
-                    scene.remove(b);
-                    bullets.splice(i, 1);
-                }
-            });
-
-            drawBloom();
-            renderer.render(scene, camera);
-        }
-
-        function onDeviceMove(e) {
-            if (!isInitialized) return;
-            let pDiff = e.gamma - phoneZero.gamma;
-            let yDiff = e.beta - phoneZero.beta;
-            currentVelocity.p = Math.abs(pDiff) > 3 ? pDiff * 0.001 : 0;
-            currentVelocity.y = Math.abs(yDiff) > 3 ? yDiff * -0.001 : 0;
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            overlay.width = window.innerWidth;
-            overlay.height = window.innerHeight;
-        }
-
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isInitialized = false; 
-            debug.innerText = "RE-ZEROING...";
-        });
-
-        document.getElementById('startBtn').addEventListener('click', function() {
-            this.style.display = 'none';
-            init();
-            onWindowResize();
-            new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene;
-                ship.traverse(node => { if(node.isMesh) node.material.flatShading = false; });
-                scene.add(ship);
-                
-                ship.position.set(0, 0, 0);
-                
-                ship.rotation.set(
-                    THREE.MathUtils.degToRad(-20),
-                    THREE.MathUtils.degToRad(180),
-                    0
-                );
-            });
-            window.addEventListener('deviceorientation', (e) => {
-                if (!isInitialized) {
-                    phoneZero = { beta: e.beta, gamma: e.gamma };
-                    isInitialized = true;
-                    debug.innerText = "TEST ACTIVE";
-                }
-                onDeviceMove(e);
-            });
-        });
-    </script>
-</body>
-</html>
+    bulletGroup.userData.velocity = forward.multiplyScalar(55); // nice snappy speed
+    bulletGroup.userData.trail = [];
+    scene.add(bulletGroup);
+    bullets.push(bulletGroup);
+}
