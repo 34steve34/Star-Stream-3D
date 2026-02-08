@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - POV & Shards</title>
+    <title>Star Stream - Drift & 3D Thrust</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -13,14 +13,12 @@
         button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         #debug { position: absolute; top: 50px; left: 10px; font-size: 11px; pointer-events: none; color: #fff; line-height: 1.4; }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; }
-        #versionBadge { position: absolute; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); padding: 5px; border: 1px solid #0f0; font-size: 12px; color: #0f0; }
     </style>
 </head>
 <body>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="debug">System Ready</div>
-    <div id="versionBadge">VER: PLASMA-V7-POV-SHARDS</div>
     <div id="hud">
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span></div>
@@ -41,22 +39,19 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let scene, camera, renderer, ship, shipLight;
-        let targets = [];
-        let bullets = [];
-        let particles = [];
+        let scene, camera, renderer, ship, shipLight, engineFlame;
+        let targets = [], bullets = [], particles = [];
         let phoneZero = { beta: 0, gamma: 0 };
-        let currentVelocity = { p: 0, y: 0 };
-        let isInitialized = false;
-        let isThrusting = false;
-        let shipSpeed = 0;
+        let currentRotationVel = { p: 0, y: 0 };
+        let isInitialized = false, isThrusting = false;
         
-        const MAX_SPEED = 2.0;
-        const ACCELERATION = 0.08;
-        const DECELERATION = 0.96;
+        // DRIFT PHYSICS
+        let velocityVec = new THREE.Vector3(0, 0, 0);
+        const DRIFT_INERTIA = 0.985; // How much momentum is kept (0.99 = very slippery)
+        const ACCEL_FORCE = 0.12;
+        
         const CAMERA_COMFORT_RADIUS = 50; 
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
-
         let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
 
         const debug = document.getElementById('debug');
@@ -80,7 +75,7 @@
             shipLight = new THREE.PointLight(0x00ffff, 150, 100);
             scene.add(shipLight);
 
-            // Background Stars
+            // Stars
             const vertices = [];
             for (let i = 0; i < 3000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
             const starGeo = new THREE.BufferGeometry();
@@ -97,22 +92,34 @@
             animate();
         }
 
+        function createEngineFlame() {
+            // Placeholder 3D Flame - Swap this with a GLB asset later
+            const geo = new THREE.ConeGeometry(0.8, 5, 8);
+            geo.translate(0, -2.5, 0); // Offset so it scales from the engine port
+            geo.rotateX(Math.PI / 2); // Point it backwards
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 });
+            const flame = new THREE.Mesh(geo, mat);
+            flame.position.set(0, 0, -1.5); // Position at the back of the ship
+            flame.scale.set(0, 0, 0);
+            return flame;
+        }
+
         function spawnWave() {
             targetsDestroyed = 0;
             for (let i = 0; i < targetsInWave; i++) {
                 const angle = (Math.PI * 2 * i) / targetsInWave;
-                const radius = 180 + Math.random() * 100;
-                spawnTarget(Math.sin(angle) * radius, (Math.random() - 0.5) * 100, -radius - 100);
+                const radius = 200 + Math.random() * 50;
+                spawnTarget(Math.sin(angle) * radius, (Math.random() - 0.5) * 100, -radius - 50);
             }
             updateHUD();
         }
 
         function spawnTarget(x, y, z) {
             const size = 12 + Math.random() * 8;
-            const mat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444, transparent: true, opacity: 0.85 });
+            const mat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 });
             const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), mat);
             mesh.position.set(x, y, z);
-            mesh.userData = { size: size, rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) };
+            mesh.userData = { size, rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) };
             scene.add(mesh);
             targets.push(mesh);
         }
@@ -121,10 +128,8 @@
             if (!ship) return;
             const plasma = new THREE.Group();
             plasma.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
-            const pLight = new THREE.PointLight(0x00ffff, 800, 150);
-            plasma.add(pLight);
+            plasma.add(new THREE.PointLight(0x00ffff, 800, 150));
             plasma.position.copy(ship.position);
-            
             const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
             plasma.userData = { velocity: dir.multiplyScalar(18), spawn: Date.now() };
             scene.add(plasma);
@@ -135,11 +140,7 @@
             for (let i = 0; i < 12; i++) {
                 const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random() * 2 + 1), new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true }));
                 shard.position.copy(pos);
-                shard.userData = { 
-                    vel: new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4),
-                    rot: new THREE.Vector3(Math.random()*0.1, Math.random()*0.1, Math.random()*0.1),
-                    life: 1.0 
-                };
+                shard.userData = { vel: new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4), rot: new THREE.Vector3(Math.random()*0.1, Math.random()*0.1, 0), life: 1.0 };
                 scene.add(shard);
                 particles.push(shard);
             }
@@ -148,59 +149,58 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized) {
-                // POV Steering: Use Camera's axis
+                // POV Steering
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                ship.rotateOnWorldAxis(camUp, -currentVelocity.y);
-                ship.rotateOnWorldAxis(camRight, -currentVelocity.p);
+                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+                ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
-                if (isThrusting) shipSpeed = Math.min(shipSpeed + ACCELERATION, MAX_SPEED);
-                else shipSpeed *= DECELERATION;
-                
-                const fwd = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
-                ship.position.add(fwd.multiplyScalar(shipSpeed));
+                // VELOCITY DRIFT LOGIC
+                if (isThrusting) {
+                    const thrustDir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
+                    velocityVec.add(thrustDir.multiplyScalar(ACCEL_FORCE));
+                    // Flame scaling & flicker
+                    engineFlame.scale.set(1, 1, 1.5 + Math.random() * 0.5);
+                    engineFlame.material.opacity = 0.6 + Math.random() * 0.4;
+                } else {
+                    velocityVec.multiplyScalar(DRIFT_INERTIA); // Apply friction/drag
+                    engineFlame.scale.set(0,0,0);
+                }
+                ship.position.add(velocityVec);
 
-                // Old Man Camera (Long Leash)
+                // Camera Leash
                 camera.lookAt(ship.position);
                 const d = ship.position.distanceTo(camera.position);
                 if (d > CAMERA_COMFORT_RADIUS) {
-                    const move = new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.03);
-                    camera.position.add(move);
+                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.03));
                 }
                 shipLight.position.copy(ship.position).add(new THREE.Vector3(0, 5, 0));
-                debug.innerHTML = `Dist: ${d.toFixed(1)} | POV Controls Active`;
             }
 
-            // Bullet & Proximity Logic
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
+            // Physics loops
+            bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
-                
                 targets.forEach((t, ti) => {
                     const dist = b.position.distanceTo(t.position);
-                    if (dist < 80) t.material.emissiveIntensity = 3.0 - (dist/40); // Proximity lighting
-                    
+                    if (dist < 80) t.material.emissiveIntensity = 3.0 - (dist/40);
                     if (dist < t.userData.size + 5) {
                         createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1);
-                        scene.remove(b); bullets.splice(i, 1);
+                        scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
                         if (targetsDestroyed >= targetsInWave) { wave++; targetsInWave += 2; setTimeout(spawnWave, 2000); }
                         updateHUD();
                     }
                 });
-                if (Date.now() - b.userData.spawn > 3000) { scene.remove(b); bullets.splice(i, 1); }
-            }
+                if (Date.now() - b.userData.spawn > 3000) { scene.remove(b); bullets.splice(bi, 1); }
+            });
 
-            // Shard Physics
-            for (let i = particles.length - 1; i >= 0; i--) {
-                const p = particles[i];
+            particles.forEach((p, i) => {
                 p.position.add(p.userData.vel);
-                p.rotation.x += p.userData.rot.x;
                 p.userData.life -= 0.02;
                 p.material.opacity = p.userData.life;
                 if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
-            }
+            });
 
             targets.forEach(t => { t.rotation.x += t.userData.rot.x; t.rotation.y += t.userData.rot.y; });
             renderer.render(scene, camera);
@@ -210,8 +210,8 @@
             if (!isInitialized) return;
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-            currentVelocity.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0;
-            currentVelocity.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0;
+            currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0;
+            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0;
         }
 
         function onWindowResize() {
@@ -223,7 +223,10 @@
             this.style.display = 'none'; hud.style.display = 'block'; thrustBtn.style.display = 'block';
             init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene; scene.add(ship);
+                ship = gltf.scene; 
+                engineFlame = createEngineFlame();
+                ship.add(engineFlame); // Attach flame to ship
+                scene.add(ship);
                 ship.position.set(0, 0, -80); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
             window.addEventListener('deviceorientation', (e) => {
