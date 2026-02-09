@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Balanced Precision</title>
+    <title>Star Stream - Auto-Leveling Combat Cam</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -43,12 +43,12 @@
             DRIFT_INERTIA: 0.95,
             ACCEL_FORCE: 0.08,
             BULLET_SPEED: 9,
-            PITCH_SENSITIVITY: 0.03, // DOUBLED
-            YAW_SENSITIVITY: 0.024,  // DOUBLED
-            EXPONENT: 1.6,           // FLATTENED for more "half-way" feel
+            PITCH_SENSITIVITY: 0.03,
+            YAW_SENSITIVITY: 0.024,
+            EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
-            CAMERA_RADIUS: 80,
+            CAMERA_SMOOTH: 0.04, // How fast the camera snaps back
             MISSION_TIME: 120
         };
 
@@ -62,14 +62,17 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
-            camera.position.set(0, 10, 40);
+            camera.position.set(0, 20, -50);
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
+
             scene.add(new THREE.AmbientLight(0xffffff, 0.3));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
             scene.add(sun);
+
             initStars();
             spawnWave();
             startTimer();
@@ -97,7 +100,6 @@
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 const sign = Math.sign(val);
-                // Normalized to 0.0 - 1.0 range based on 35 deg max tilt
                 const normalized = Math.min(Math.abs(val) / 35, 1); 
                 return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
@@ -111,6 +113,7 @@
             if (ship && isInitialized && gameActive) {
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
@@ -127,12 +130,19 @@
                 }
                 ship.position.add(velocityVec);
                 handleStarWrap();
+
+                // --- NEW AUTO-LEVELING CAMERA LOGIC ---
+                // Calculate ideal behind-the-ship position
+                const idealOffset = new THREE.Vector3(0, 12, -45); // Above and Behind
+                idealOffset.applyQuaternion(ship.quaternion);
+                const targetPos = new THREE.Vector3().addVectors(ship.position, idealOffset);
+
+                // If not thrusting/rotating hard, ease to the "Combat View"
+                const isIdle = !isThrusting && Math.abs(currentRotationVel.p) < 0.01 && Math.abs(currentRotationVel.y) < 0.01;
+                const camLerpFactor = isIdle ? 0.03 : 0.08; // Slower, natural ease when idle
+                
+                camera.position.lerp(targetPos, camLerpFactor);
                 camera.lookAt(ship.position);
-                const dist = ship.position.distanceTo(camera.position);
-                if (dist > CONFIG.CAMERA_RADIUS) {
-                    const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
-                    camera.position.add(followDir.multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
-                }
             }
             handleBullets();
             renderer.render(scene, camera);
