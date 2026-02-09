@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Restored Stable</title>
+    <title>Star Stream - Dynamic FOV</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -49,7 +49,9 @@
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
             CAMERA_RADIUS: 80,
-            MISSION_TIME: 120
+            MISSION_TIME: 120,
+            BASE_FOV: 75,
+            MAX_FOV_BOOST: 20
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -61,7 +63,7 @@
 
         function init() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
+            camera = new THREE.PerspectiveCamera(CONFIG.BASE_FOV, window.innerWidth / window.innerHeight, 1, 30000);
             camera.position.set(0, 10, 40);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -106,7 +108,6 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // Return to LOCAL AXIS rotation for maximum stability (no flipping)
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
@@ -124,9 +125,15 @@
                     engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
                 }
                 ship.position.add(velocityVec);
+                
+                // DYNAMIC FOV CALCULATION
+                const speedRatio = velocityVec.length() / CONFIG.MAX_VELOCITY;
+                const targetFOV = CONFIG.BASE_FOV + (speedRatio * CONFIG.MAX_FOV_BOOST);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.1);
+                camera.updateProjectionMatrix();
+
                 handleStarWrap();
                 
-                // Classic Follow Camera (Safe & Predictable)
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -153,7 +160,13 @@
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 30) {
                         const travelDist = b.position.distanceTo(b.userData.origin);
-                        score += (10 + Math.floor(travelDist / 100));
+                        
+                        // IMPROVED SCORE MATH: Reward Distance
+                        // Base 10 points + (distance^1.2 / 50) 
+                        // This makes 500m shots worth ~45 points, and 1000m shots worth ~85 points.
+                        const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
+                        score += (10 + distanceBonus);
+                        
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
@@ -166,7 +179,7 @@
 
         function fireLaser() {
             if (!ship || !gameActive) return;
-            score -= 2; updateHUD();
+            // Removed score penalty for firing to encourage long-range attempts
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
             const pLight = new THREE.PointLight(0xff00ff, 1800, 120); pLight.decay = 1;
@@ -186,9 +199,9 @@
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const dist = 500 + Math.random() * 500;
+                const dist = 600 + Math.random() * 800; // Spread them out slightly more for sniping
                 const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 }));
-                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*400, center.z + Math.sin(angle)*dist - 300);
+                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*500, center.z + Math.sin(angle)*dist - 300);
                 scene.add(t); targets.push(t);
             }
             updateHUD();
