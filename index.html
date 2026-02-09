@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Quaternion Flight</title>
+    <title>Star Stream - Fixed Axis</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -113,13 +113,12 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // SOLUTION: Use local rotation vectors to prevent spinning on vertical axis
-                const pitchAxis = new THREE.Vector3(1, 0, 0); // X axis
-                const yawAxis = new THREE.Vector3(0, 1, 0);   // Y axis
+                // Local Axis Rotation
+                const pitchAxis = new THREE.Vector3(1, 0, 0); 
+                const yawAxis = new THREE.Vector3(0, 1, 0);   
                 
-                // Apply rotation locally based on ship's current orientation
-                ship.rotateOnAxis(pitchAxis, -currentRotationVel.p);
-                ship.rotateOnAxis(yawAxis, -currentRotationVel.y);
+                ship.rotateOnAxis(pitchAxis, currentRotationVel.p);
+                ship.rotateOnAxis(yawAxis, currentRotationVel.y);
 
                 if (isThrusting) {
                     const thrustDir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
@@ -174,17 +173,12 @@
         }
 
         function createBeam() {
-            const beamGeo = new THREE.CylinderGeometry(0.2, 0.05, 12, 8); // Longer, narrower beam
-            const beamMat = new THREE.MeshBasicMaterial({ 
-                color: 0xff7700, 
-                transparent: true, 
-                opacity: 0.8 
-            });
+            const beamGeo = new THREE.CylinderGeometry(0.2, 0.05, 12, 8);
+            const beamMat = new THREE.MeshBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.8 });
             engineBeam = new THREE.Mesh(beamGeo, beamMat);
             engineBeam.position.set(0, 0, -6.5);
             engineBeam.rotation.x = Math.PI / 2;
             engineBeam.scale.set(0,0,0);
-            
             engineLight = new THREE.PointLight(0xff7700, 0, 50);
             engineLight.position.set(0, 0, -2);
             ship.add(engineLight);
@@ -219,10 +213,11 @@
                 isInitialized = true;
                 return;
             }
+            // FIXED: Inverted these diffs so directions align with phone tilt
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0018 : 0;
-            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0018 : 0;
+            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * 0.0018 : 0;
         }
 
         function spawnTrail() { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.6 })); dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion)); dot.userData = { life: 1.0 }; scene.add(dot); trails.push(dot); }
