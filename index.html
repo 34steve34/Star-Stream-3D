@@ -3,26 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Plasma Fire</title>
+    <title>Star Stream - Tactical Beam</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
-        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 20; font-size: 12px; cursor: pointer; }
+        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         button { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; }
+        #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; }
+        #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
     </style>
 </head>
 <body>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
+        <div id="timer">02:00</div>
         <div>SCORE: <span id="score">0</span></div>
-        <div>WAVE: <span id="wave">1</span></div>
-        <div>TARGETS: <span id="targets">0</span></div>
+        <div>WAVE: <span id="wave">1</span> | TARGETS: <span id="targets">0</span></div>
     </div>
-    <div id="ui"><button id="startBtn">START GAME</button></div>
+    <div id="ui"><button id="startBtn">START MISSION</button></div>
 
     <script type="importmap">
         {
@@ -37,24 +38,25 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let scene, camera, renderer, ship, engineFlame;
+        let scene, camera, renderer, ship, engineBeam, engineLight;
         let starFields = []; 
         let targets = [], bullets = [], trails = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentRotationVel = { p: 0, y: 0 };
-        let isInitialized = false, isThrusting = false;
+        let isInitialized = false, isThrusting = false, gameActive = false;
         
         let velocityVec = new THREE.Vector3(0, 0, 0);
         const DRIFT_INERTIA = 0.985; 
-        const ACCEL_FORCE = 0.12; 
-        const MAX_VELOCITY = 2.5;
+        const ACCEL_FORCE = 0.08; 
+        const MAX_VELOCITY = 1.5;  
         
         const CAMERA_COMFORT_RADIUS = 80; 
         const CAMERA_FOLLOW_SPEED = 0.02; 
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
         const SECTOR_SIZE = 3500; 
 
-        let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
+        let score = 0, wave = 1, targetsInWave = 5;
+        let timeLeft = 120; // 2 Minutes
 
         function init() {
             scene = new THREE.Scene();
@@ -65,12 +67,12 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-            const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
             scene.add(sun);
 
-            // Infinite Star Grid
+            // Stars
             const starGeo = new THREE.BufferGeometry();
             const starPos = new Float32Array(250 * 3);
             for(let i=0; i<250*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
@@ -89,18 +91,30 @@
             }
 
             spawnWave();
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('touchstart', (e) => { if (e.target !== thrustBtn) fireLaser(); });
-            
-            thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); });
-            thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); });
-
+            startTimer();
             animate();
+        }
+
+        function startTimer() {
+            const timerInterval = setInterval(() => {
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    gameActive = false;
+                    alert("Mission Complete! Final Score: " + score);
+                    location.reload();
+                } else {
+                    timeLeft--;
+                    const mins = Math.floor(timeLeft / 60);
+                    const secs = timeLeft % 60;
+                    document.getElementById('timer').textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (ship && isInitialized) {
+            if (ship && isInitialized && gameActive) {
+                // Rotations based on Zero Offset
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
@@ -110,15 +124,19 @@
                     const thrustDir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
                     velocityVec.add(thrustDir.multiplyScalar(ACCEL_FORCE));
                     if(velocityVec.length() > MAX_VELOCITY) velocityVec.setLength(MAX_VELOCITY);
-                    engineFlame.scale.set(1, 1, 1.5 + Math.random()*0.5);
+                    
+                    // Beam FX
+                    engineBeam.scale.set(1, 1 + Math.random()*0.5, 1);
+                    engineLight.intensity = 2000 + Math.random()*1000;
                     if(Math.random() > 0.4) spawnTrail();
                 } else {
                     velocityVec.multiplyScalar(DRIFT_INERTIA);
-                    engineFlame.scale.set(0,0,0);
+                    engineBeam.scale.set(0,0,0);
+                    engineLight.intensity = 0;
                 }
                 ship.position.add(velocityVec);
 
-                // Grid Repositioning
+                // Star Wrap
                 starFields.forEach(field => {
                     const diff = new THREE.Vector3().subVectors(field.position, ship.position);
                     if (diff.x > SECTOR_SIZE * 1.5) field.position.x -= SECTOR_SIZE * 3;
@@ -137,84 +155,106 @@
                 }
             }
 
-            trails.forEach((t, i) => {
-                t.userData.life -= 0.03;
-                t.scale.setScalar(t.userData.life);
-                if(t.userData.life <= 0) { scene.remove(t); trails.splice(i, 1); }
-            });
-
+            // Bullet Logic with Distance Scoring
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    // BUFFED HITBOX: Using distance 25 instead of 15 to make it easier to hit
-                    if (b.position.distanceTo(t.position) < 25) {
+                    if (b.position.distanceTo(t.position) < 30) {
+                        const travelDist = b.position.distanceTo(b.userData.origin);
+                        const bonus = Math.floor(travelDist / 100);
+                        score += (10 + bonus);
+                        
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
-                        score += 10; targetsDestroyed++;
-                        if (targetsDestroyed >= targetsInWave) { wave++; targetsInWave += 2; setTimeout(spawnWave, 1000); }
+                        if (targets.length === 0) { wave++; targetsInWave += 2; spawnWave(); }
                         updateHUD();
                     }
                 });
-                if (Date.now() - b.userData.spawn > 4000) { scene.remove(b); bullets.splice(bi, 1); }
+                if (Date.now() - b.userData.spawn > 5000) { scene.remove(b); bullets.splice(bi, 1); }
             });
 
             renderer.render(scene, camera);
         }
 
-        function spawnTrail() {
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.6 }));
-            dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion));
-            dot.userData = { life: 1.0 };
-            scene.add(dot);
-            trails.push(dot);
-        }
-
-        function spawnWave() {
-            targetsDestroyed = 0;
-            const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
-            for (let i = 0; i < targetsInWave; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 400 + Math.random() * 300;
-                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 }));
-                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*300, center.z + Math.sin(angle)*dist - 300);
-                scene.add(t);
-                targets.push(t);
-            }
-            updateHUD();
+        // BLOOM BEAM IMPLEMENTATION
+        function createBeam() {
+            const beamGeo = new THREE.CylinderGeometry(0.3, 0.1, 8, 8);
+            const beamMat = new THREE.MeshBasicMaterial({ 
+                color: 0xffaa00, 
+                transparent: true, 
+                opacity: 0.9 
+            });
+            engineBeam = new THREE.Mesh(beamGeo, beamMat);
+            engineBeam.position.set(0, 0, -5);
+            engineBeam.rotation.x = Math.PI / 2;
+            engineBeam.scale.set(0,0,0);
+            
+            engineLight = new THREE.PointLight(0xffaa00, 0, 40);
+            engineLight.position.set(0, 0, -1.5);
+            ship.add(engineLight);
+            ship.add(engineBeam);
         }
 
         function fireLaser() {
-            if (!ship) return;
+            if (!ship || !gameActive) return;
+            score -= 2; // Penalty
+            updateHUD();
+
             const plasma = new THREE.Group();
-            // NEW BULLET COLOR: Hot Pink / Magenta
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
             plasma.add(core);
-            // Bullet Light: Casts pink light on nearby crystals to help judge distance
-            const pLight = new THREE.PointLight(0xff00ff, 100, 50);
+            const pLight = new THREE.PointLight(0xff00ff, 1500, 100); 
+            pLight.decay = 1;
             plasma.add(pLight);
 
             plasma.position.copy(ship.position);
             const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
-            plasma.userData = { velocity: dir.multiplyScalar(20), spawn: Date.now() };
+            plasma.userData = { 
+                velocity: dir.multiplyScalar(9), // SLOWER
+                origin: ship.position.clone(),
+                spawn: Date.now() 
+            };
             scene.add(plasma);
             bullets.push(plasma);
         }
 
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isInitialized = false; // This triggers the re-capture in the orientation listener
+        });
+
+        function onDeviceMove(e) {
+            if (!isInitialized) {
+                phoneZero = { beta: e.beta, gamma: e.gamma };
+                isInitialized = true;
+                return;
+            }
+            let pDiff = e.gamma - phoneZero.gamma;
+            let yDiff = e.beta - phoneZero.beta;
+            currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0;
+            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0;
+        }
+
+        // Boilerplate Helpers
+        function spawnTrail() { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.6 })); dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion)); dot.userData = { life: 1.0 }; scene.add(dot); trails.push(dot); }
+        function spawnWave() { const center = ship ? ship.position : new THREE.Vector3(0,0,-100); for (let i = 0; i < targetsInWave; i++) { const angle = Math.random() * Math.PI * 2; const dist = 400 + Math.random() * 300; const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 })); t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*300, center.z + Math.sin(angle)*dist - 300); scene.add(t); targets.push(t); } updateHUD(); }
         function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
-        function onDeviceMove(e) { if (!isInitialized) return; let pDiff = e.gamma - phoneZero.gamma; let yDiff = e.beta - phoneZero.beta; currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0; currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0; }
         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
 
         document.getElementById('startBtn').addEventListener('click', function() {
             this.style.display = 'none'; hud.style.display = 'block'; thrustBtn.style.display = 'block';
+            gameActive = true;
             init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
-                engineFlame = new THREE.Mesh(new THREE.ConeGeometry(0.8, 5, 8), new THREE.MeshBasicMaterial({ color: 0xff7800 }));
-                engineFlame.translateY(-2.5); engineFlame.rotateX(Math.PI/2); engineFlame.position.set(0,0,-1.5);
-                ship.add(engineFlame); scene.add(ship);
+                createBeam();
+                scene.add(ship);
                 ship.position.set(0, 0, -100); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
-            window.addEventListener('deviceorientation', (e) => { if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; } onDeviceMove(e); });
+            window.addEventListener('deviceorientation', onDeviceMove);
+            window.addEventListener('touchstart', (e) => { if (e.target.id !== 'thrustBtn' && e.target.id !== 'zeroBtn') fireLaser(); });
+            thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); });
+            thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); });
         });
     </script>
 </body>
