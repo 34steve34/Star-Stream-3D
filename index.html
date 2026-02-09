@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Long Leash Infinity</title>
+    <title>Star Stream - Ultra Long Leash</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -39,7 +39,7 @@
 
         let scene, camera, renderer, ship, engineFlame;
         let starFields = []; 
-        let targets = [], bullets = [], particles = [], trails = [];
+        let targets = [], bullets = [], trails = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false;
@@ -47,19 +47,21 @@
         let velocityVec = new THREE.Vector3(0, 0, 0);
         const DRIFT_INERTIA = 0.985; 
         const ACCEL_FORCE = 0.12; 
-        const MAX_VELOCITY = 2.0;
+        const MAX_VELOCITY = 2.5;
         
-        // RE-ESTABLISHED: The long camera leash for scale
-        const CAMERA_COMFORT_RADIUS = 50; 
+        // MAJOR CHANGE: Expanded comfort radius and loosened follow-speed
+        const CAMERA_COMFORT_RADIUS = 80; 
+        const CAMERA_FOLLOW_SPEED = 0.02; 
+        
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
-        const SECTOR_SIZE = 2500; 
+        const SECTOR_SIZE = 3500; 
 
         let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
 
         function init() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 20000);
-            camera.position.set(0, 5, 25);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
+            camera.position.set(0, 10, 40);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -72,10 +74,10 @@
 
             // Infinite Star Grid
             const starGeo = new THREE.BufferGeometry();
-            const starPos = new Float32Array(300 * 3);
-            for(let i=0; i<300*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
+            const starPos = new Float32Array(250 * 3);
+            for(let i=0; i<250*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
             starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 3, transparent: true, opacity: 0.7 });
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 4, transparent: true, opacity: 0.8 });
 
             for(let x=-1; x<=1; x++) {
                 for(let y=-1; y<=1; y++) {
@@ -118,7 +120,7 @@
                 }
                 ship.position.add(velocityVec);
 
-                // Grid Repositioning (Infinite Star Logic)
+                // Grid Repositioning
                 starFields.forEach(field => {
                     const diff = new THREE.Vector3().subVectors(field.position, ship.position);
                     if (diff.x > SECTOR_SIZE * 1.5) field.position.x -= SECTOR_SIZE * 3;
@@ -129,16 +131,16 @@
                     if (diff.z < -SECTOR_SIZE * 1.5) field.position.z += SECTOR_SIZE * 3;
                 });
 
-                // Cinematic Follow
+                // ULTRA LOOSE FOLLOW
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CAMERA_COMFORT_RADIUS) {
                     const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
-                    camera.position.add(followDir.multiplyScalar((dist - CAMERA_COMFORT_RADIUS) * 0.04));
+                    camera.position.add(followDir.multiplyScalar((dist - CAMERA_COMFORT_RADIUS) * CAMERA_FOLLOW_SPEED));
                 }
             }
 
-            // Loops
+            // Cleanup loops
             trails.forEach((t, i) => {
                 t.userData.life -= 0.03;
                 t.scale.setScalar(t.userData.life);
@@ -148,7 +150,7 @@
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 15) {
+                    if (b.position.distanceTo(t.position) < 20) {
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
@@ -162,8 +164,8 @@
         }
 
         function spawnTrail() {
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 }));
-            dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion));
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.6 }));
+            dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion));
             dot.userData = { life: 1.0 };
             scene.add(dot);
             trails.push(dot);
@@ -171,12 +173,12 @@
 
         function spawnWave() {
             targetsDestroyed = 0;
-            const center = ship ? ship.position : new THREE.Vector3(0,0,-80);
+            const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const dist = 300 + Math.random() * 200;
-                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 }));
-                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*200, center.z + Math.sin(angle)*dist - 200);
+                const dist = 400 + Math.random() * 300;
+                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 }));
+                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*300, center.z + Math.sin(angle)*dist - 300);
                 scene.add(t);
                 targets.push(t);
             }
@@ -186,10 +188,10 @@
         function fireLaser() {
             if (!ship) return;
             const plasma = new THREE.Group();
-            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
+            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
             plasma.position.copy(ship.position);
             const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
-            plasma.userData = { velocity: dir.multiplyScalar(15), spawn: Date.now() };
+            plasma.userData = { velocity: dir.multiplyScalar(18), spawn: Date.now() };
             scene.add(plasma);
             bullets.push(plasma);
         }
@@ -203,10 +205,10 @@
             init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
-                engineFlame = new THREE.Mesh(new THREE.ConeGeometry(0.6, 4, 8), new THREE.MeshBasicMaterial({ color: 0xff7800 }));
-                engineFlame.translateY(-2); engineFlame.rotateX(Math.PI/2); engineFlame.position.set(0,0,-1.2);
+                engineFlame = new THREE.Mesh(new THREE.ConeGeometry(0.8, 5, 8), new THREE.MeshBasicMaterial({ color: 0xff7800 }));
+                engineFlame.translateY(-2.5); engineFlame.rotateX(Math.PI/2); engineFlame.position.set(0,0,-1.5);
                 ship.add(engineFlame); scene.add(ship);
-                ship.position.set(0, 0, -60); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
+                ship.position.set(0, 0, -100); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
             window.addEventListener('deviceorientation', (e) => { if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; } onDeviceMove(e); });
         });
