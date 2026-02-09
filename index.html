@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.3.0</title>
+    <title>Star Stream - v2.4.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -14,11 +14,11 @@
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .indicator { position: absolute; width: 15px; height: 15px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); }
+        .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
     </style>
 </head>
 <body>
-    <div id="version">v2.3.0</div>
+    <div id="version">v2.4.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -52,8 +52,8 @@
             EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
-            LOCAL_STAR_COUNT: 800, // Increased for immersion
-            LOCAL_STAR_RANGE: 800, // Tighter for more frequent streaming
+            LOCAL_STAR_COUNT: 800,
+            LOCAL_STAR_RANGE: 800,
             CAMERA_RADIUS: 80,
             MISSION_TIME: 120,
             BASE_FOV: 75,
@@ -130,35 +130,41 @@
 
         function updateIndicators() {
             const container = document.getElementById('indicator-container');
-            while(container.firstChild) container.removeChild(container.firstChild);
+            container.innerHTML = '';
             
             if(!ship || !gameActive) return;
 
-            const widthHalf = window.innerWidth / 2;
-            const heightHalf = window.innerHeight / 2;
+            const halfW = window.innerWidth / 2;
+            const halfH = window.innerHeight / 2;
+            
+            // Create frustum to check if target is visible to player
+            const projScreenMatrix = new THREE.Matrix4();
+            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
             const frustum = new THREE.Frustum();
-            frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+            frustum.setFromProjectionMatrix(projScreenMatrix);
 
             targets.forEach(t => {
-                // If target is visible on screen, don't show the bloom
+                // RULE: If target is in the forward view, hide the bloom entirely
                 if (frustum.containsPoint(t.position)) return;
 
                 const vector = t.position.clone().project(camera);
                 const div = document.createElement('div');
                 div.className = 'indicator';
                 
-                let x = (vector.x * widthHalf) + widthHalf;
-                let y = -(vector.y * heightHalf) + heightHalf;
+                let x = (vector.x * halfW) + halfW;
+                let y = -(vector.y * halfH) + halfH;
 
-                // If behind, mirror the coordinates to edges
+                // Handle targets behind the camera (z > 1 after projection)
                 if (vector.z > 1) {
                     x = window.innerWidth - x;
                     y = window.innerHeight - y;
+                    // Mirror to ensure it points the right way on the perimeter
+                    x = (x < halfW) ? 20 : window.innerWidth - 20;
                 }
 
-                // Force to screen edges
-                x = Math.max(25, Math.min(window.innerWidth - 25, x));
-                y = Math.max(25, Math.min(window.innerHeight - 25, y));
+                // FORCE TO PERIMETER: Clamp to edges with a 20px margin
+                x = Math.max(20, Math.min(window.innerWidth - 20, x));
+                y = Math.max(20, Math.min(window.innerHeight - 20, y));
 
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
