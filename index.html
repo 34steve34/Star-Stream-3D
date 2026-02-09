@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Stabilized Controls</title>
+    <title>Star Stream - Gold Master Build</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -99,19 +99,18 @@
                 return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY); // YAW direction corrected
+            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // Control Logic: Turning based on Camera context
                 const camDir = new THREE.Vector3();
                 camera.getWorldDirection(camDir);
                 const camRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), camDir).normalize().negate();
                 
-                // FIXED YAW: Using world up prevents the "spinning room" tumble
-                ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), currentRotationVel.y); 
+                // YAW FLIPPED BACK: -currentRotationVel.y
+                ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), -currentRotationVel.y); 
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
                 if (isThrusting) {
@@ -128,11 +127,8 @@
                 ship.position.add(velocityVec);
                 handleStarWrap();
 
-                // STABILIZED CAMERA SPRING
                 const idealOffset = new THREE.Vector3(0, 10, -55).applyQuaternion(ship.quaternion);
                 const targetPos = new THREE.Vector3().copy(ship.position).add(idealOffset);
-                
-                // If user is actively tilting, camera follows loosely. If hands are still, it levels out.
                 const isStationary = Math.abs(currentRotationVel.p) < 0.002 && Math.abs(currentRotationVel.y) < 0.002;
                 const lerpFactor = isStationary ? 0.02 : 0.1; 
                 
