@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Stabilized Spring Cam</title>
+    <title>Star Stream - Stabilized Controls</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -43,13 +43,11 @@
             DRIFT_INERTIA: 0.95,
             ACCEL_FORCE: 0.08,
             BULLET_SPEED: 9,
-            PITCH_SENSITIVITY: 0.03,
-            YAW_SENSITIVITY: 0.024,
+            PITCH_SENSITIVITY: 0.035,
+            YAW_SENSITIVITY: 0.028, 
             EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
-            CAMERA_LERP_STILL: 0.02, // Very slow crawl back
-            CAMERA_LERP_MOVE: 0.08,  // Faster follow when moving
             MISSION_TIME: 120
         };
 
@@ -63,7 +61,7 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
-            camera.position.set(0, 20, -60);
+            camera.position.set(0, 15, -60);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -101,19 +99,19 @@
                 return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
+            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY); // YAW direction corrected
         }
 
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // Stabilized Rotation logic
+                // Control Logic: Turning based on Camera context
                 const camDir = new THREE.Vector3();
                 camera.getWorldDirection(camDir);
-                const camRight = new THREE.Vector3().crossVectors(camera.up, camDir).normalize().negate();
-                const camUp = new THREE.Vector3().crossVectors(camDir, camRight).normalize();
+                const camRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), camDir).normalize().negate();
                 
-                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+                // FIXED YAW: Using world up prevents the "spinning room" tumble
+                ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0), currentRotationVel.y); 
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
                 if (isThrusting) {
@@ -131,14 +129,14 @@
                 handleStarWrap();
 
                 // STABILIZED CAMERA SPRING
-                const idealOffset = new THREE.Vector3(0, 12, -50).applyQuaternion(ship.quaternion);
+                const idealOffset = new THREE.Vector3(0, 10, -55).applyQuaternion(ship.quaternion);
                 const targetPos = new THREE.Vector3().copy(ship.position).add(idealOffset);
                 
-                // Only "Snap Back" if the player isn't actively tilting
-                const isInputActive = Math.abs(currentRotationVel.p) > 0.005 || Math.abs(currentRotationVel.y) > 0.005;
-                const lerpSpeed = isInputActive ? CONFIG.CAMERA_LERP_MOVE : CONFIG.CAMERA_LERP_STILL;
+                // If user is actively tilting, camera follows loosely. If hands are still, it levels out.
+                const isStationary = Math.abs(currentRotationVel.p) < 0.002 && Math.abs(currentRotationVel.y) < 0.002;
+                const lerpFactor = isStationary ? 0.02 : 0.1; 
                 
-                camera.position.lerp(targetPos, lerpSpeed);
+                camera.position.lerp(targetPos, lerpFactor);
                 camera.lookAt(ship.position);
             }
             handleBullets();
