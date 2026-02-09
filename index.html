@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Final Tactical Build</title>
+    <title>Star Stream - Precision Curve Build</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -38,14 +38,15 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // --- CONFIGURATION ---
         const CONFIG = {
             MAX_VELOCITY: 1.5,
             DRIFT_INERTIA: 0.95,
             ACCEL_FORCE: 0.08,
             BULLET_SPEED: 9,
-            PITCH_SENSITIVITY: 0.0018,
-            YAW_SENSITIVITY: 0.0011, // DECREASED for smoother horizontal control
+            PITCH_SENSITIVITY: 0.015, 
+            YAW_SENSITIVITY: 0.012,
+            EXPONENT: 2.2,     // The "Fine Tuning" Curve
+            DEADZONE: 1.2,      // Degrees of tilt to ignore
             SECTOR_SIZE: 3500,
             CAMERA_RADIUS: 80,
             MISSION_TIME: 120
@@ -62,16 +63,13 @@
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
             camera.position.set(0, 10, 40);
-            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
-
             scene.add(new THREE.AmbientLight(0xffffff, 0.3));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
             scene.add(sun);
-
             initStars();
             spawnWave();
             startTimer();
@@ -84,26 +82,34 @@
             for(let i=0; i<250*3; i++) starPos[i] = (Math.random()-0.5) * CONFIG.SECTOR_SIZE;
             starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
             const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 4, transparent: true, opacity: 0.8 });
-
-            for(let x=-1; x<=1; x++) {
-                for(let y=-1; y<=1; y++) {
-                    for(let z=-1; z<=1; z++) {
-                        const points = new THREE.Points(starGeo, starMat);
-                        points.position.set(x * CONFIG.SECTOR_SIZE, y * CONFIG.SECTOR_SIZE, z * CONFIG.SECTOR_SIZE);
-                        scene.add(points);
-                        starFields.push(points);
-                    }
-                }
+            for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) for(let z=-1; z<=1; z++) {
+                const points = new THREE.Points(starGeo, starMat);
+                points.position.set(x * CONFIG.SECTOR_SIZE, y * CONFIG.SECTOR_SIZE, z * CONFIG.SECTOR_SIZE);
+                scene.add(points); starFields.push(points);
             }
+        }
+
+        function onDeviceMove(e) {
+            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
+            let pDiff = e.gamma - phoneZero.gamma;
+            let yDiff = e.beta - phoneZero.beta;
+
+            const applyCurve = (val, sens) => {
+                if (Math.abs(val) < CONFIG.DEADZONE) return 0;
+                const sign = Math.sign(val);
+                const normalized = Math.min(Math.abs(val) / 35, 1); // 35 degrees is 'max' tilt
+                return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
+            };
+
+            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // PLAYER-ORIENTED VIEWING: Rotate based on Camera vectors
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
@@ -111,19 +117,15 @@
                     const thrustDir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
                     velocityVec.add(thrustDir.multiplyScalar(CONFIG.ACCEL_FORCE));
                     if(velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
-                    
                     engineBeam.scale.set(1, 1.2 + Math.random()*0.8, 1);
                     engineLight.intensity = 2500 + Math.random()*1000;
                     if(Math.random() > 0.4) spawnTrail();
                 } else {
                     velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
-                    engineBeam.scale.set(0,0,0);
-                    engineLight.intensity = 0;
+                    engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
                 }
                 ship.position.add(velocityVec);
                 handleStarWrap();
-
-                // Camera follow
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -166,10 +168,8 @@
             score -= 2; updateHUD();
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
-            const pLight = new THREE.PointLight(0xff00ff, 1800, 120); 
-            pLight.decay = 1;
-            plasma.add(core, pLight);
-            plasma.position.copy(ship.position);
+            const pLight = new THREE.PointLight(0xff00ff, 1800, 120); pLight.decay = 1;
+            plasma.add(core, pLight); plasma.position.copy(ship.position);
             const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
             plasma.userData = { velocity: dir.multiplyScalar(CONFIG.BULLET_SPEED), origin: ship.position.clone(), spawn: Date.now() };
             scene.add(plasma); bullets.push(plasma);
@@ -191,14 +191,6 @@
                 scene.add(t); targets.push(t);
             }
             updateHUD();
-        }
-
-        function onDeviceMove(e) {
-            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
-            let pDiff = e.gamma - phoneZero.gamma;
-            let yDiff = e.beta - phoneZero.beta;
-            currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * CONFIG.PITCH_SENSITIVITY : 0;
-            currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * CONFIG.YAW_SENSITIVITY : 0;
         }
 
         function startTimer() {
