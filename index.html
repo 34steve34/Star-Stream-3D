@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.1.0</title>
+    <title>Star Stream - v2.2.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
         #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
-        #version { position: absolute; top: 10px; right: 10px; color: rgba(0, 255, 0, 0.5); font-size: 10px; z-index: 30; }
+        #version { position: absolute; top: 10px; right: 10px; color: rgba(255, 120, 0, 0.7); font-size: 10px; z-index: 30; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .indicator { position: absolute; width: 12px; height: 12px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 70%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); }
     </style>
 </head>
 <body>
-    <div id="version">v2.1.0</div>
+    <div id="version">v2.2.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -26,6 +27,7 @@
         <div>WAVE: <span id="wave">1</span> | TARGETS: <span id="targets">0</span></div>
     </div>
     <div id="ui"><button id="startBtn">START MISSION</button></div>
+    <div id="indicator-container"></div>
 
     <script type="importmap">
         {
@@ -50,15 +52,18 @@
             EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
+            LOCAL_STAR_COUNT: 400,
+            LOCAL_STAR_RANGE: 1000,
             CAMERA_RADIUS: 80,
             MISSION_TIME: 120,
             BASE_FOV: 75,
             MAX_FOV_BOOST: 18,
-            FOV_SMOOTHING: 0.03 // Lower = smoother, more cinematic
+            FOV_SMOOTHING: 0.03
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
-        let starFields = [], targets = [], bullets = [], trails = [];
+        let starFields = [], localStars, targets = [], bullets = [], trails = [];
+        let indicators = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
@@ -71,11 +76,14 @@
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
+            
             scene.add(new THREE.AmbientLight(0xffffff, 0.3));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
             scene.add(sun);
+
             initStars();
+            initLocalStars();
             spawnWave();
             startTimer();
             animate();
@@ -92,6 +100,77 @@
                 points.position.set(x * CONFIG.SECTOR_SIZE, y * CONFIG.SECTOR_SIZE, z * CONFIG.SECTOR_SIZE);
                 scene.add(points); starFields.push(points);
             }
+        }
+
+        function initLocalStars() {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
+            for(let i=0; i<CONFIG.LOCAL_STAR_COUNT * 3; i++) pos[i] = (Math.random()-0.5) * CONFIG.LOCAL_STAR_RANGE;
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.6 });
+            localStars = new THREE.Points(geo, mat);
+            scene.add(localStars);
+        }
+
+        function handleLocalStars() {
+            if(!localStars || !ship) return;
+            // Keep the local star box centered on the ship
+            localStars.position.copy(ship.position);
+            const positions = localStars.geometry.attributes.position.array;
+            const range = CONFIG.LOCAL_STAR_RANGE;
+            
+            // This creates the "streaming" effect by wrapping them in local space
+            for(let i=0; i<positions.length; i+=3) {
+                // If velocity exists, stars "stay" in world space as ship moves
+                // This is handled by the parent position, but we add wrap logic here
+                if(positions[i+2] > range/2) positions[i+2] -= range;
+                if(positions[i+2] < -range/2) positions[i+2] += range;
+                if(positions[i] > range/2) positions[i] -= range;
+                if(positions[i] < -range/2) positions[i] += range;
+                if(positions[i+1] > range/2) positions[i+1] -= range;
+                if(positions[i+1] < -range/2) positions[i+1] += range;
+            }
+            localStars.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function updateIndicators() {
+            const container = document.getElementById('indicator-container');
+            // Clean up old indicators
+            while(container.firstChild) container.removeChild(container.firstChild);
+            
+            if(!ship || !gameActive) return;
+
+            const widthHalf = window.innerWidth / 2;
+            const heightHalf = window.innerHeight / 2;
+
+            targets.forEach(t => {
+                const vector = t.position.clone().project(camera);
+                const isOffScreen = vector.x < -1 || vector.x > 1 || vector.y < -1 || vector.y > 1 || vector.z > 1;
+
+                const div = document.createElement('div');
+                div.className = 'indicator';
+                
+                let x = (vector.x * widthHalf) + widthHalf;
+                let y = -(vector.y * heightHalf) + heightHalf;
+
+                if (vector.z > 1) { // Target is behind
+                    x = window.innerWidth - x;
+                    y = window.innerHeight - y;
+                }
+
+                // Clamp to screen edges if offscreen
+                x = Math.max(20, Math.min(window.innerWidth - 20, x));
+                y = Math.max(20, Math.min(window.innerHeight - 20, y));
+
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                
+                // Pulsate/Bloom effect
+                const scale = isOffScreen ? 0.8 : 1.5;
+                div.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                
+                container.appendChild(div);
+            });
         }
 
         function onDeviceMove(e) {
@@ -129,14 +208,14 @@
                 }
                 ship.position.add(velocityVec);
                 
-                // SMOOTHED DYNAMIC FOV
                 const speedRatio = velocityVec.length() / CONFIG.MAX_VELOCITY;
                 const targetFOV = CONFIG.BASE_FOV + (speedRatio * CONFIG.MAX_FOV_BOOST);
-                // Lower alpha value (0.03) ensures the FOV doesn't snap instantly
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
 
                 handleStarWrap();
+                handleLocalStars();
+                updateIndicators();
                 
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
