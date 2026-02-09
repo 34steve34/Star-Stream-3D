@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Auto-Leveling Combat Cam</title>
+    <title>Star Stream - Stabilized Spring Cam</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -48,7 +48,8 @@
             EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
-            CAMERA_SMOOTH: 0.04, // How fast the camera snaps back
+            CAMERA_LERP_STILL: 0.02, // Very slow crawl back
+            CAMERA_LERP_MOVE: 0.08,  // Faster follow when moving
             MISSION_TIME: 120
         };
 
@@ -62,17 +63,14 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
-            camera.position.set(0, 20, -50);
-            
+            camera.position.set(0, 20, -60);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
-
             scene.add(new THREE.AmbientLight(0xffffff, 0.3));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
             scene.add(sun);
-
             initStars();
             spawnWave();
             startTimer();
@@ -96,14 +94,12 @@
             if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 const sign = Math.sign(val);
                 const normalized = Math.min(Math.abs(val) / 35, 1); 
                 return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
-
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
         }
@@ -111,8 +107,11 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                // Stabilized Rotation logic
+                const camDir = new THREE.Vector3();
+                camera.getWorldDirection(camDir);
+                const camRight = new THREE.Vector3().crossVectors(camera.up, camDir).normalize().negate();
+                const camUp = new THREE.Vector3().crossVectors(camDir, camRight).normalize();
                 
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
@@ -131,17 +130,15 @@
                 ship.position.add(velocityVec);
                 handleStarWrap();
 
-                // --- NEW AUTO-LEVELING CAMERA LOGIC ---
-                // Calculate ideal behind-the-ship position
-                const idealOffset = new THREE.Vector3(0, 12, -45); // Above and Behind
-                idealOffset.applyQuaternion(ship.quaternion);
-                const targetPos = new THREE.Vector3().addVectors(ship.position, idealOffset);
-
-                // If not thrusting/rotating hard, ease to the "Combat View"
-                const isIdle = !isThrusting && Math.abs(currentRotationVel.p) < 0.01 && Math.abs(currentRotationVel.y) < 0.01;
-                const camLerpFactor = isIdle ? 0.03 : 0.08; // Slower, natural ease when idle
+                // STABILIZED CAMERA SPRING
+                const idealOffset = new THREE.Vector3(0, 12, -50).applyQuaternion(ship.quaternion);
+                const targetPos = new THREE.Vector3().copy(ship.position).add(idealOffset);
                 
-                camera.position.lerp(targetPos, camLerpFactor);
+                // Only "Snap Back" if the player isn't actively tilting
+                const isInputActive = Math.abs(currentRotationVel.p) > 0.005 || Math.abs(currentRotationVel.y) > 0.005;
+                const lerpSpeed = isInputActive ? CONFIG.CAMERA_LERP_MOVE : CONFIG.CAMERA_LERP_STILL;
+                
+                camera.position.lerp(targetPos, lerpSpeed);
                 camera.lookAt(ship.position);
             }
             handleBullets();
