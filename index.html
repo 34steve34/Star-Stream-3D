@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Ultra Long Leash</title>
+    <title>Star Stream - Plasma Fire</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -49,10 +49,8 @@
         const ACCEL_FORCE = 0.12; 
         const MAX_VELOCITY = 2.5;
         
-        // MAJOR CHANGE: Expanded comfort radius and loosened follow-speed
         const CAMERA_COMFORT_RADIUS = 80; 
         const CAMERA_FOLLOW_SPEED = 0.02; 
-        
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
         const SECTOR_SIZE = 3500; 
 
@@ -131,7 +129,6 @@
                     if (diff.z < -SECTOR_SIZE * 1.5) field.position.z += SECTOR_SIZE * 3;
                 });
 
-                // ULTRA LOOSE FOLLOW
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CAMERA_COMFORT_RADIUS) {
@@ -140,7 +137,6 @@
                 }
             }
 
-            // Cleanup loops
             trails.forEach((t, i) => {
                 t.userData.life -= 0.03;
                 t.scale.setScalar(t.userData.life);
@@ -150,7 +146,8 @@
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 20) {
+                    // BUFFED HITBOX: Using distance 25 instead of 15 to make it easier to hit
+                    if (b.position.distanceTo(t.position) < 25) {
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
@@ -158,6 +155,7 @@
                         updateHUD();
                     }
                 });
+                if (Date.now() - b.userData.spawn > 4000) { scene.remove(b); bullets.splice(bi, 1); }
             });
 
             renderer.render(scene, camera);
@@ -188,10 +186,16 @@
         function fireLaser() {
             if (!ship) return;
             const plasma = new THREE.Group();
-            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
+            // NEW BULLET COLOR: Hot Pink / Magenta
+            const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+            plasma.add(core);
+            // Bullet Light: Casts pink light on nearby crystals to help judge distance
+            const pLight = new THREE.PointLight(0xff00ff, 100, 50);
+            plasma.add(pLight);
+
             plasma.position.copy(ship.position);
             const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
-            plasma.userData = { velocity: dir.multiplyScalar(18), spawn: Date.now() };
+            plasma.userData = { velocity: dir.multiplyScalar(20), spawn: Date.now() };
             scene.add(plasma);
             bullets.push(plasma);
         }
