@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - True Infinite</title>
+    <title>Star Stream - Long Leash Infinity</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -38,25 +38,30 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         let scene, camera, renderer, ship, engineFlame;
-        let starFields = []; // Multiple layers of star sectors
+        let starFields = []; 
         let targets = [], bullets = [], particles = [], trails = [];
         let phoneZero = { beta: 0, gamma: 0 };
         let currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false;
         
         let velocityVec = new THREE.Vector3(0, 0, 0);
-        const DRIFT_INERTIA = 0.98; 
-        const ACCEL_FORCE = 0.10; 
-        const MAX_VELOCITY = 2.5;
+        const DRIFT_INERTIA = 0.985; 
+        const ACCEL_FORCE = 0.12; 
+        const MAX_VELOCITY = 2.0;
         
-        const SECTOR_SIZE = 1500; // Large enough that you can't see the edge
-        const CAMERA_COMFORT_RADIUS = 30; 
+        // RESTORED: Long Camera Leash
+        const CAMERA_COMFORT_RADIUS = 50; 
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
+        
+        // Massive sectors to ensure we never see the edges
+        const SECTOR_SIZE = 2500; 
+
         let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
 
         function init() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 15000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 20000);
+            camera.position.set(0, 5, 25);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -67,14 +72,12 @@
             sun.position.set(10, 20, 10);
             scene.add(sun);
 
-            // CREATE INFINITE SECTOR GRID
-            // We create a 3x3x3 grid of star boxes (27 sectors)
+            // INFINITE GRID
             const starGeo = new THREE.BufferGeometry();
-            const starPos = new Float32Array(400 * 3);
-            for(let i=0; i<400*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
+            const starPos = new Float32Array(300 * 3);
+            for(let i=0; i<300*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
             starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-            
-            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2, transparent: true, opacity: 0.8 });
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 3, transparent: true, opacity: 0.7 });
 
             for(let x=-1; x<=1; x++) {
                 for(let y=-1; y<=1; y++) {
@@ -117,29 +120,30 @@
                 }
                 ship.position.add(velocityVec);
 
-                // TRUE INFINITE WRAPPING:
-                // Move star sectors to stay centered around the ship
+                // SECTOR WRAPPING
                 starFields.forEach(field => {
-                    if (field.position.x - ship.position.x > SECTOR_SIZE * 1.5) field.position.x -= SECTOR_SIZE * 3;
-                    if (field.position.x - ship.position.x < -SECTOR_SIZE * 1.5) field.position.x += SECTOR_SIZE * 3;
-                    
-                    if (field.position.y - ship.position.y > SECTOR_SIZE * 1.5) field.position.y -= SECTOR_SIZE * 3;
-                    if (field.position.y - ship.position.y < -SECTOR_SIZE * 1.5) field.position.y += SECTOR_SIZE * 3;
-                    
-                    if (field.position.z - ship.position.z > SECTOR_SIZE * 1.5) field.position.z -= SECTOR_SIZE * 3;
-                    if (field.position.z - ship.position.z < -SECTOR_SIZE * 1.5) field.position.z += SECTOR_SIZE * 3;
+                    const diff = new THREE.Vector3().subVectors(field.position, ship.position);
+                    if (diff.x > SECTOR_SIZE * 1.5) field.position.x -= SECTOR_SIZE * 3;
+                    if (diff.x < -SECTOR_SIZE * 1.5) field.position.x += SECTOR_SIZE * 3;
+                    if (diff.y > SECTOR_SIZE * 1.5) field.position.y -= SECTOR_SIZE * 3;
+                    if (diff.y < -SECTOR_SIZE * 1.5) field.position.y += SECTOR_SIZE * 3;
+                    if (diff.z > SECTOR_SIZE * 1.5) field.position.z -= SECTOR_SIZE * 3;
+                    if (diff.z < -SECTOR_SIZE * 1.5) field.position.z += SECTOR_SIZE * 3;
                 });
 
+                // RESTORED: Cinematic Loose Camera
                 camera.lookAt(ship.position);
-                const d = ship.position.distanceTo(camera.position);
-                if (d > CAMERA_COMFORT_RADIUS) {
-                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((d - CAMERA_COMFORT_RADIUS) * 0.1));
+                const dist = ship.position.distanceTo(camera.position);
+                if (dist > CAMERA_COMFORT_RADIUS) {
+                    const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
+                    // Slower interpolation (0.04) makes the leash feel longer and smoother
+                    camera.position.add(followDir.multiplyScalar((dist - CAMERA_COMFORT_RADIUS) * 0.04));
                 }
             }
 
-            // Cleanup/Update loops
+            // Physics Loops
             trails.forEach((t, i) => {
-                t.userData.life -= 0.04;
+                t.userData.life -= 0.03;
                 t.scale.setScalar(t.userData.life);
                 if(t.userData.life <= 0) { scene.remove(t); trails.splice(i, 1); }
             });
@@ -148,6 +152,7 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 15) {
+                        createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
@@ -160,14 +165,52 @@
             renderer.render(scene, camera);
         }
 
-        // Helper functions
+        function createExplosion(pos) {
+            for (let i = 0; i < 12; i++) {
+                const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random() * 2 + 1), new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true }));
+                shard.position.copy(pos);
+                shard.userData = { vel: new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4), life: 1.0 };
+                scene.add(shard);
+                particles.push(shard);
+            }
+        }
+
+        function spawnTrail() {
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 }));
+            dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion));
+            dot.userData = { life: 1.0 };
+            scene.add(dot);
+            trails.push(dot);
+        }
+
+        function spawnWave() {
+            targetsDestroyed = 0;
+            const center = ship ? ship.position : new THREE.Vector3(0,0,-80);
+            for (let i = 0; i < targetsInWave; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 300 + Math.random() * 200;
+                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 }));
+                t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*200, center.z + Math.sin(angle)*dist - 200);
+                scene.add(t);
+                targets.push(t);
+            }
+            updateHUD();
+        }
+
+        function fireLaser() {
+            if (!ship) return;
+            const plasma = new THREE.Group();
+            plasma.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff })));
+            plasma.position.copy(ship.position);
+            const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
+            plasma.userData = { velocity: dir.multiplyScalar(15), spawn: Date.now() };
+            scene.add(plasma);
+            bullets.push(plasma);
+        }
+
+        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
         function onDeviceMove(e) { if (!isInitialized) return; let pDiff = e.gamma - phoneZero.gamma; let yDiff = e.beta - phoneZero.beta; currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0015 : 0; currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * -0.0015 : 0; }
         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
-        function spawnWave() { targetsDestroyed = 0; const center = ship ? ship.position : new THREE.Vector3(0,0,-80); for (let i = 0; i < targetsInWave; i++) { const angle = Math.random() * Math.PI * 2; const dist = 200 + Math.random() * 100; spawnTarget(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*100, center.z + Math.sin(angle)*dist - 100); } updateHUD(); }
-        function spawnTarget(x, y, z) { const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(12, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x004444 })); mesh.position.set(x, y, z); mesh.userData = { rot: new THREE.Vector3(Math.random()*0.02, Math.random()*0.02, 0) }; scene.add(mesh); targets.push(mesh); }
-        function fireLaser() { if (!ship) return; const plasma = new THREE.Group(); plasma.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ffff }))); plasma.position.copy(ship.position); const dir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize(); plasma.userData = { velocity: dir.multiplyScalar(15), spawn: Date.now() }; scene.add(plasma); bullets.push(plasma); }
-        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
-        function spawnTrail() { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.8 })); dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion)); dot.userData = { life: 1.0 }; scene.add(dot); trails.push(dot); }
 
         document.getElementById('startBtn').addEventListener('click', function() {
             this.style.display = 'none'; hud.style.display = 'block'; thrustBtn.style.display = 'block';
