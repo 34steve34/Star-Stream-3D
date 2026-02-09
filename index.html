@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Dynamic FOV</title>
+    <title>Star Stream - v2.1.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
         #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
+        #version { position: absolute; top: 10px; right: 10px; color: rgba(0, 255, 0, 0.5); font-size: 10px; z-index: 30; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
@@ -16,6 +17,7 @@
     </style>
 </head>
 <body>
+    <div id="version">v2.1.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -51,7 +53,8 @@
             CAMERA_RADIUS: 80,
             MISSION_TIME: 120,
             BASE_FOV: 75,
-            MAX_FOV_BOOST: 20
+            MAX_FOV_BOOST: 18,
+            FOV_SMOOTHING: 0.03 // Lower = smoother, more cinematic
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -126,10 +129,11 @@
                 }
                 ship.position.add(velocityVec);
                 
-                // DYNAMIC FOV CALCULATION
+                // SMOOTHED DYNAMIC FOV
                 const speedRatio = velocityVec.length() / CONFIG.MAX_VELOCITY;
                 const targetFOV = CONFIG.BASE_FOV + (speedRatio * CONFIG.MAX_FOV_BOOST);
-                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.1);
+                // Lower alpha value (0.03) ensures the FOV doesn't snap instantly
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
 
                 handleStarWrap();
@@ -160,10 +164,6 @@
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 30) {
                         const travelDist = b.position.distanceTo(b.userData.origin);
-                        
-                        // IMPROVED SCORE MATH: Reward Distance
-                        // Base 10 points + (distance^1.2 / 50) 
-                        // This makes 500m shots worth ~45 points, and 1000m shots worth ~85 points.
                         const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
                         score += (10 + distanceBonus);
                         
@@ -179,7 +179,6 @@
 
         function fireLaser() {
             if (!ship || !gameActive) return;
-            // Removed score penalty for firing to encourage long-range attempts
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
             const pLight = new THREE.PointLight(0xff00ff, 1800, 120); pLight.decay = 1;
@@ -199,7 +198,7 @@
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const dist = 600 + Math.random() * 800; // Spread them out slightly more for sniping
+                const dist = 600 + Math.random() * 800;
                 const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 }));
                 t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*500, center.z + Math.sin(angle)*dist - 300);
                 scene.add(t); targets.push(t);
