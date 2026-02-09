@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Fixed Axis</title>
+    <title>Star Stream - Player View Fix</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -113,12 +113,14 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
-                // Local Axis Rotation
-                const pitchAxis = new THREE.Vector3(1, 0, 0); 
-                const yawAxis = new THREE.Vector3(0, 1, 0);   
+                // MAJOR CHANGE: Using Camera-Relative vectors to fix "Player Viewing"
+                // This ensures "Right" on the phone is always "Right" on the screen.
+                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 
-                ship.rotateOnAxis(pitchAxis, currentRotationVel.p);
-                ship.rotateOnAxis(yawAxis, currentRotationVel.y);
+                // We use rotateOnWorldAxis because we are passing it vectors derived from the camera
+                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+                ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
                 if (isThrusting) {
                     const thrustDir = SHIP_FORWARD.clone().applyQuaternion(ship.quaternion).normalize();
@@ -213,7 +215,7 @@
                 isInitialized = true;
                 return;
             }
-            // FIXED: Inverted these diffs so directions align with phone tilt
+            // Standardizing the input. Diffs are now relative to your screen.
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0018 : 0;
