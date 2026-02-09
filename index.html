@@ -49,11 +49,9 @@
         const ACCEL_FORCE = 0.12; 
         const MAX_VELOCITY = 2.0;
         
-        // RESTORED: Long Camera Leash
+        // RE-ESTABLISHED: The long camera leash for scale
         const CAMERA_COMFORT_RADIUS = 50; 
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
-        
-        // Massive sectors to ensure we never see the edges
         const SECTOR_SIZE = 2500; 
 
         let score = 0, wave = 1, targetsInWave = 5, targetsDestroyed = 0;
@@ -72,7 +70,7 @@
             sun.position.set(10, 20, 10);
             scene.add(sun);
 
-            // INFINITE GRID
+            // Infinite Star Grid
             const starGeo = new THREE.BufferGeometry();
             const starPos = new Float32Array(300 * 3);
             for(let i=0; i<300*3; i++) starPos[i] = (Math.random()-0.5) * SECTOR_SIZE;
@@ -120,7 +118,7 @@
                 }
                 ship.position.add(velocityVec);
 
-                // SECTOR WRAPPING
+                // Grid Repositioning (Infinite Star Logic)
                 starFields.forEach(field => {
                     const diff = new THREE.Vector3().subVectors(field.position, ship.position);
                     if (diff.x > SECTOR_SIZE * 1.5) field.position.x -= SECTOR_SIZE * 3;
@@ -131,17 +129,16 @@
                     if (diff.z < -SECTOR_SIZE * 1.5) field.position.z += SECTOR_SIZE * 3;
                 });
 
-                // RESTORED: Cinematic Loose Camera
+                // Cinematic Follow
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CAMERA_COMFORT_RADIUS) {
                     const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
-                    // Slower interpolation (0.04) makes the leash feel longer and smoother
                     camera.position.add(followDir.multiplyScalar((dist - CAMERA_COMFORT_RADIUS) * 0.04));
                 }
             }
 
-            // Physics Loops
+            // Loops
             trails.forEach((t, i) => {
                 t.userData.life -= 0.03;
                 t.scale.setScalar(t.userData.life);
@@ -152,7 +149,6 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 15) {
-                        createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         score += 10; targetsDestroyed++;
@@ -163,16 +159,6 @@
             });
 
             renderer.render(scene, camera);
-        }
-
-        function createExplosion(pos) {
-            for (let i = 0; i < 12; i++) {
-                const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random() * 2 + 1), new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true }));
-                shard.position.copy(pos);
-                shard.userData = { vel: new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4), life: 1.0 };
-                scene.add(shard);
-                particles.push(shard);
-            }
         }
 
         function spawnTrail() {
