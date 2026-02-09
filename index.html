@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - Precision Strike</title>
+    <title>Star Stream - Breadcrumb Navigator</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
-        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
+        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX( -50% ); text-align: center; width: 100%; z-index: 10; }
         #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
@@ -46,7 +46,7 @@
         let isInitialized = false, isThrusting = false, gameActive = false;
         
         let velocityVec = new THREE.Vector3(0, 0, 0);
-        const DRIFT_INERTIA = 0.95; // LESS DRIFT (Faster stopping)
+        const DRIFT_INERTIA = 0.95; 
         const ACCEL_FORCE = 0.08; 
         const MAX_VELOCITY = 1.5;  
         
@@ -55,7 +55,7 @@
         const SHIP_FORWARD = new THREE.Vector3(0, 0, 1);
         const SECTOR_SIZE = 3500; 
 
-        let score = 0, wave = 1, targetsInWave = 12; // INCREASED Initial Targets
+        let score = 0, wave = 1, targetsInWave = 12;
         let timeLeft = 120;
 
         function init() {
@@ -128,7 +128,7 @@
                     engineLight.intensity = 2500 + Math.random()*1000;
                     if(Math.random() > 0.4) spawnTrail();
                 } else {
-                    velocityVec.multiplyScalar(DRIFT_INERTIA); // Apply friction
+                    velocityVec.multiplyScalar(DRIFT_INERTIA);
                     engineBeam.scale.set(0,0,0);
                     engineLight.intensity = 0;
                 }
@@ -161,11 +161,7 @@
                         score += (10 + bonus);
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
-                        if (targets.length === 0) { 
-                            wave++; 
-                            targetsInWave += 4; // Steeper scaling
-                            spawnWave(); 
-                        }
+                        if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
                         updateHUD();
                     }
                 });
@@ -205,30 +201,29 @@
             bullets.push(plasma);
         }
 
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isInitialized = false;
-        });
+        function spawnTrail() { 
+            // BREADCRUMB SYSTEM: Trail stays forever to help with navigation
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.3 })); 
+            dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion)); 
+            scene.add(dot); 
+            trails.push(dot); 
+        }
+
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
 
         function onDeviceMove(e) {
-            if (!isInitialized) {
-                phoneZero = { beta: e.beta, gamma: e.gamma };
-                isInitialized = true;
-                return;
-            }
+            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             currentRotationVel.p = Math.abs(pDiff) > 2 ? pDiff * 0.0018 : 0;
             currentRotationVel.y = Math.abs(yDiff) > 2 ? yDiff * 0.0018 : 0;
         }
 
-        function spawnTrail() { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff7800, transparent: true, opacity: 0.6 })); dot.position.copy(ship.position).add(new THREE.Vector3(0,0,-1.5).applyQuaternion(ship.quaternion)); dot.userData = { life: 1.0 }; scene.add(dot); trails.push(dot); }
-        
         function spawnWave() { 
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100); 
             for (let i = 0; i < targetsInWave; i++) { 
                 const angle = Math.random() * Math.PI * 2; 
-                const dist = 500 + Math.random() * 500; // Wider spawn range
+                const dist = 500 + Math.random() * 500;
                 const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 })); 
                 t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*400, center.z + Math.sin(angle)*dist - 300); 
                 scene.add(t); 
