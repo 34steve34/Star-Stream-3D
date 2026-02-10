@@ -13,7 +13,7 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
-        #scopeDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
+        #scoreDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
         
@@ -60,7 +60,6 @@
     <div id="ui"><button id="startBtn">START MISSION</button></div>
     <div id="indicator-container"></div>
     
-    <!-- Red Dot Scope Elements -->
     <canvas id="scopeCanvas"></canvas>
     <div id="scopeReticle"></div>
 
@@ -159,37 +158,23 @@
 
             debugDiv.style.display = 'block';
 
-            // Create phantom bullet that simulates the firing line
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            const bulletVelocity = shipForward.clone().multiplyScalar(CONFIG.BULLET_SPEED);
             
             let targetInRange = false;
             let closestDist = Infinity;
-            let closestTarget = null;
 
-            // Simulate phantom bullet traveling forward from ship
-            // Check positions along the bullet's path
             for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
                 const phantomPos = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
                 
-                // Check if phantom bullet would hit any target (using same logic as real bullets)
                 for (let target of targets) {
                     const dist = phantomPos.distanceTo(target.position);
-                    
-                    if (dist < closestDist) {
-                        closestDist = dist;
-                        closestTarget = target;
-                    }
-                    
-                    // If phantom bullet gets within SCOPE_HIT_DISTANCE of target, activate scope
-                    // (Real bullets hit at < 30, scope uses larger threshold for earlier warning)
+                    if (dist < closestDist) closestDist = dist;
                     if (dist < CONFIG.SCOPE_HIT_DISTANCE) {
                         targetInRange = true;
                         break;
                     }
                 }
-                
-                if (targetInRange) break; // Stop checking once we found a target in range
+                if (targetInRange) break;
             }
 
             debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
@@ -200,7 +185,10 @@
                 // Position scope camera in front of ship's nose
                 const forwardOffset = shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET);
                 scopeCamera.position.copy(ship.position).add(forwardOffset);
+                
+                // Copy ship rotation and flip 180 degrees to look forward
                 scopeCamera.quaternion.copy(ship.quaternion);
+                scopeCamera.rotateY(Math.PI);
 
                 scopeRenderer.render(scene, scopeCamera);
                 scopeCanvas.style.display = 'block';
@@ -260,14 +248,12 @@
             const halfW = window.innerWidth / 2;
             const halfH = window.innerHeight / 2;
             
-            // Create frustum to check if target is visible to player
             const projScreenMatrix = new THREE.Matrix4();
             projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
             const frustum = new THREE.Frustum();
             frustum.setFromProjectionMatrix(projScreenMatrix);
 
             targets.forEach(t => {
-                // RULE: If target is in the forward view, hide the bloom entirely
                 if (frustum.containsPoint(t.position)) return;
 
                 const vector = t.position.clone().project(camera);
@@ -277,15 +263,12 @@
                 let x = (vector.x * halfW) + halfW;
                 let y = -(vector.y * halfH) + halfH;
 
-                // Handle targets behind the camera (z > 1 after projection)
                 if (vector.z > 1) {
                     x = window.innerWidth - x;
                     y = window.innerHeight - y;
-                    // Mirror to ensure it points the right way on the perimeter
                     x = (x < halfW) ? 20 : window.innerWidth - 20;
                 }
 
-                // FORCE TO PERIMETER: Clamp to edges with a 20px margin
                 x = Math.max(20, Math.min(window.innerWidth - 20, x));
                 y = Math.max(20, Math.min(window.innerHeight - 20, y));
 
@@ -340,14 +323,12 @@
                 updateIndicators();
                 updateScope();
                 
-                // Position camera behind ship
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
                     const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
                     camera.position.add(followDir.multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
                 }
                 
-                // Orient camera to match ship's roll (keep ship "upright" in view)
                 const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion);
                 const lookAtMatrix = new THREE.Matrix4();
                 lookAtMatrix.lookAt(camera.position, ship.position, shipUp);
