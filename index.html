@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.7.1</title>
+    <title>Star Stream - v2.8.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -48,7 +48,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v2.7.1</div>
+    <div id="version">v2.8.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="scopeDebug"></div>
@@ -97,8 +97,8 @@
             SCOPE_RANGE: 2000,
             SCOPE_FOV: 25,
             SCOPE_FORWARD_OFFSET: 8,
-            SCOPE_THRESHOLD: 500,
-            TARGET_RADIUS: 15,
+            SCOPE_HIT_DISTANCE: 150,
+            BULLET_CHECK_STEP: 20,
             SCOPE_ACTIVATION_THRESHOLD: 60
         };
 
@@ -159,50 +159,42 @@
 
             debugDiv.style.display = 'block';
 
-            // Calculate ray from ship's nose forward
+            // Create phantom bullet that simulates the firing line
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            const shipNose = ship.position.clone();
+            const bulletVelocity = shipForward.clone().multiplyScalar(CONFIG.BULLET_SPEED);
             
-            let closestDistance = Infinity;
-            let closestSurfaceDist = Infinity;
-            let closestProj = 0;
             let targetInRange = false;
+            let closestDist = Infinity;
+            let closestTarget = null;
 
-            // Check each target's distance to the firing line
-            for (let target of targets) {
-                const toTarget = new THREE.Vector3().subVectors(target.position, shipNose);
+            // Simulate phantom bullet traveling forward from ship
+            // Check positions along the bullet's path
+            for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
+                const phantomPos = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
                 
-                // Project toTarget onto shipForward to find closest point on ray
-                const projection = toTarget.dot(shipForward);
-                
-                // Only consider targets in front of ship
-                if (projection > 0) {
-                    // Find closest point on ray to target
-                    const closestPointOnRay = shipForward.clone().multiplyScalar(projection).add(shipNose);
+                // Check if phantom bullet would hit any target (using same logic as real bullets)
+                for (let target of targets) {
+                    const dist = phantomPos.distanceTo(target.position);
                     
-                    // Calculate perpendicular distance from ray to target center
-                    const distanceToRay = target.position.distanceTo(closestPointOnRay);
-                    
-                    // Distance from firing line to target SURFACE (accounting for target radius)
-                    const distanceToSurface = Math.max(0, distanceToRay - CONFIG.TARGET_RADIUS);
-                    
-                    // Track the closest target
-                    if (distanceToSurface < closestSurfaceDist) {
-                        closestSurfaceDist = distanceToSurface;
-                        closestDistance = distanceToRay;
-                        closestProj = projection;
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestTarget = target;
                     }
                     
-                    // If firing line passes within threshold of target surface
-                    if (distanceToSurface < CONFIG.SCOPE_THRESHOLD && projection < CONFIG.SCOPE_RANGE) {
+                    // If phantom bullet gets within SCOPE_HIT_DISTANCE of target, activate scope
+                    // (Real bullets hit at < 30, scope uses larger threshold for earlier warning)
+                    if (dist < CONFIG.SCOPE_HIT_DISTANCE) {
                         targetInRange = true;
+                        break;
                     }
                 }
+                
+                if (targetInRange) break; // Stop checking once we found a target in range
             }
 
             debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
-                                 `Closest: Dist=${closestDistance.toFixed(0)} Surf=${closestSurfaceDist.toFixed(0)} Proj=${closestProj.toFixed(0)}<br>` +
-                                 `Threshold: ${CONFIG.SCOPE_THRESHOLD} | Targets: ${targets.length}`;
+                                 `Closest phantom dist: ${closestDist.toFixed(0)}<br>` +
+                                 `Threshold: ${CONFIG.SCOPE_HIT_DISTANCE} | Targets: ${targets.length}`;
 
             if (targetInRange) {
                 // Position scope camera in front of ship's nose
