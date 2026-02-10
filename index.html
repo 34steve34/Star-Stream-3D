@@ -3,31 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.4.0</title>
+    <title>Star Stream - v2.5.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
         #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
         #version { position: absolute; top: 10px; right: 10px; color: rgba(255, 120, 0, 0.7); font-size: 10px; z-index: 30; }
-        #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 80px; height: 80px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
+        #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 104px; height: 104px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
+        
+        /* Red Dot Scope */
+        #scopeCanvas { 
+            position: absolute; 
+            bottom: 80px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 180px; 
+            height: 180px; 
+            border: 3px solid rgba(255, 0, 0, 0.8); 
+            border-radius: 50%; 
+            z-index: 15; 
+            display: none;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5), inset 0 0 40px rgba(0, 0, 0, 0.8);
+        }
+        #scopeReticle {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px;
+            height: 6px;
+            background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%);
+            border-radius: 50%;
+            z-index: 16;
+            display: none;
+            box-shadow: 0 0 8px #ff0000;
+        }
     </style>
 </head>
 <body>
-    <div id="version">v2.4.0</div>
+    <div id="version">v2.5.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
-        <div id="timer">02:00</div>
+        <div id="timer">03:00</div>
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span> | TARGETS: <span id="targets">0</span></div>
     </div>
     <div id="ui"><button id="startBtn">START MISSION</button></div>
     <div id="indicator-container"></div>
+    
+    <!-- Red Dot Scope Elements -->
+    <canvas id="scopeCanvas"></canvas>
+    <div id="scopeReticle"></div>
 
     <script type="importmap">
         {
@@ -55,13 +87,17 @@
             LOCAL_STAR_COUNT: 800,
             LOCAL_STAR_RANGE: 800,
             CAMERA_RADIUS: 80,
-            MISSION_TIME: 120,
+            MISSION_TIME: 180,
             BASE_FOV: 75,
             MAX_FOV_BOOST: 18,
-            FOV_SMOOTHING: 0.03
+            FOV_SMOOTHING: 0.03,
+            SCOPE_RANGE: 150,
+            SCOPE_FOV: 25,
+            SCOPE_FORWARD_OFFSET: 8
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
+        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
         let starFields = [], localStars, targets = [], bullets = [], trails = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false;
@@ -81,11 +117,66 @@
             sun.position.set(10, 20, 10);
             scene.add(sun);
 
+            initScope();
             initStars();
             initLocalStars();
             spawnWave();
             startTimer();
             animate();
+        }
+
+        function initScope() {
+            scopeCanvas = document.getElementById('scopeCanvas');
+            scopeReticle = document.getElementById('scopeReticle');
+            scopeCanvas.width = 180;
+            scopeCanvas.height = 180;
+            
+            scopeCamera = new THREE.PerspectiveCamera(CONFIG.SCOPE_FOV, 1, 1, 3000);
+            scopeRenderer = new THREE.WebGLRenderer({ 
+                canvas: scopeCanvas, 
+                antialias: true,
+                alpha: true
+            });
+            scopeRenderer.setSize(180, 180);
+            scopeRenderer.setClearColor(0x000000, 0.3);
+        }
+
+        function updateScope() {
+            if (!ship || !gameActive) {
+                scopeCanvas.style.display = 'none';
+                scopeReticle.style.display = 'none';
+                return;
+            }
+
+            // Check if any target is within range and roughly in line of sight
+            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+            let targetInRange = false;
+
+            for (let target of targets) {
+                const toTarget = new THREE.Vector3().subVectors(target.position, ship.position);
+                const distance = toTarget.length();
+                const angle = shipForward.angleTo(toTarget);
+
+                // Target is in range and within ~30 degree cone
+                if (distance < CONFIG.SCOPE_RANGE && angle < Math.PI / 6) {
+                    targetInRange = true;
+                    break;
+                }
+            }
+
+            if (targetInRange) {
+                // Position scope camera in front of ship's nose
+                const forwardOffset = shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET);
+                scopeCamera.position.copy(ship.position).add(forwardOffset);
+                scopeCamera.quaternion.copy(ship.quaternion);
+
+                scopeRenderer.render(scene, scopeCamera);
+                scopeCanvas.style.display = 'block';
+                scopeReticle.style.display = 'block';
+            } else {
+                scopeCanvas.style.display = 'none';
+                scopeReticle.style.display = 'none';
+            }
         }
 
         function initStars() {
@@ -144,31 +235,26 @@
             frustum.setFromProjectionMatrix(projScreenMatrix);
 
             targets.forEach(t => {
-                // RULE: If target is in the forward view, hide the bloom entirely
                 if (frustum.containsPoint(t.position)) return;
-
-                const vector = t.position.clone().project(camera);
-                const div = document.createElement('div');
-                div.className = 'indicator';
                 
-                let x = (vector.x * halfW) + halfW;
-                let y = -(vector.y * halfH) + halfH;
-
-                // Handle targets behind the camera (z > 1 after projection)
-                if (vector.z > 1) {
-                    x = window.innerWidth - x;
-                    y = window.innerHeight - y;
-                    // Mirror to ensure it points the right way on the perimeter
-                    x = (x < halfW) ? 20 : window.innerWidth - 20;
-                }
-
-                // FORCE TO PERIMETER: Clamp to edges with a 20px margin
-                x = Math.max(20, Math.min(window.innerWidth - 20, x));
-                y = Math.max(20, Math.min(window.innerHeight - 20, y));
-
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
-                container.appendChild(div);
+                const toTarget = new THREE.Vector3().subVectors(t.position, ship.position);
+                const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                
+                const x = toTarget.dot(camRight);
+                const y = toTarget.dot(camUp);
+                
+                const angle = Math.atan2(x, -y);
+                const edgeDist = 40;
+                const indicatorX = halfW + Math.sin(angle) * (halfW - edgeDist);
+                const indicatorY = halfH - Math.cos(angle) * (halfH - edgeDist);
+                
+                const indicator = document.createElement('div');
+                indicator.className = 'indicator';
+                indicator.style.left = `${indicatorX}px`;
+                indicator.style.top = `${indicatorY}px`;
+                container.appendChild(indicator);
             });
         }
 
@@ -215,6 +301,7 @@
                 handleStarWrap();
                 handleLocalStars();
                 updateIndicators();
+                updateScope();
                 
                 camera.lookAt(ship.position);
                 const dist = ship.position.distanceTo(camera.position);
