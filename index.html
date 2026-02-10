@@ -19,7 +19,7 @@
         /* Red Dot Scope */
         #scopeCanvas { 
             position: absolute; 
-            bottom: 80px; 
+            bottom: 120px; 
             left: 50%; 
             transform: translateX(-50%); 
             width: 180px; 
@@ -28,11 +28,12 @@
             border-radius: 50%; 
             z-index: 15; 
             display: none;
-            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5), inset 0 0 40px rgba(0, 0, 0, 0.8);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            background: #000;
         }
         #scopeReticle {
             position: absolute;
-            bottom: 80px;
+            bottom: 210px;
             left: 50%;
             transform: translate(-50%, -50%);
             width: 6px;
@@ -135,10 +136,10 @@
             scopeRenderer = new THREE.WebGLRenderer({ 
                 canvas: scopeCanvas, 
                 antialias: true,
-                alpha: true
+                alpha: false
             });
             scopeRenderer.setSize(180, 180);
-            scopeRenderer.setClearColor(0x000000, 0.3);
+            scopeRenderer.setClearColor(0x000000, 1.0);
         }
 
         function updateScope() {
