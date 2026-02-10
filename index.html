@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.9.0</title>
+    <title>Star Stream - v3.0.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -13,10 +13,6 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
-        #scopeDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
-        button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
-        
         #scopeCanvas { 
             position: absolute; 
             bottom: 120px; 
@@ -44,13 +40,13 @@
             display: none;
             box-shadow: 0 0 8px #ff0000;
         }
+        .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
     </style>
 </head>
 <body>
-    <div id="version">v2.9.0</div>
+    <div id="version">v3.0.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
-    <div id="scopeDebug"></div>
     <div id="hud">
         <div id="timer">03:00</div>
         <div>SCORE: <span id="score">0</span></div>
@@ -80,8 +76,8 @@
             DRIFT_INERTIA: 0.95,
             ACCEL_FORCE: 0.08,
             BULLET_SPEED: 9,
-            PITCH_SENSITIVITY: 0.03,
-            YAW_SENSITIVITY: 0.024,
+            PITCH_SENSITIVITY: 0.035,
+            YAW_SENSITIVITY: 0.03,
             EXPONENT: 1.6,
             DEADZONE: 1.2,
             SECTOR_SIZE: 3500,
@@ -97,8 +93,8 @@
             SCOPE_FORWARD_OFFSET: 8,
             SCOPE_HIT_DISTANCE: 150,
             BULLET_CHECK_STEP: 20,
-            EXPLOSION_SHARDS: 18,
-            SHAKE_INTENSITY: 1.5
+            EXPLOSION_SHARDS: 20,
+            SHAKE_INTENSITY: 1.8
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -134,21 +130,14 @@
         function initScope() {
             scopeCanvas = document.getElementById('scopeCanvas');
             scopeReticle = document.getElementById('scopeReticle');
-            scopeCanvas.width = 180;
-            scopeCanvas.height = 180;
-            
             scopeCamera = new THREE.PerspectiveCamera(CONFIG.SCOPE_FOV, 1, 1, 3000);
-            scopeRenderer = new THREE.WebGLRenderer({ 
-                canvas: scopeCanvas, 
-                antialias: true,
-                alpha: false
-            });
+            scopeRenderer = new THREE.WebGLRenderer({ canvas: scopeCanvas, antialias: true, alpha: false });
             scopeRenderer.setSize(180, 180);
             scopeRenderer.setClearColor(0x000000, 1.0);
         }
 
         function createExplosion(position) {
-            shakeTime = 15; // Trigger shake
+            shakeTime = 15; // Set shake frames
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
                 const color = new THREE.Color().setHSL(Math.random(), 1.0, 0.5);
                 const shard = new THREE.Mesh(
@@ -157,11 +146,7 @@
                 );
                 shard.position.copy(position);
                 shard.userData = {
-                    velocity: new THREE.Vector3(
-                        (Math.random() - 0.5) * 12,
-                        (Math.random() - 0.5) * 12,
-                        (Math.random() - 0.5) * 12
-                    ),
+                    velocity: new THREE.Vector3((Math.random()-0.5)*14, (Math.random()-0.5)*14, (Math.random()-0.5)*14),
                     life: 1.0
                 };
                 scene.add(shard);
@@ -177,32 +162,16 @@
                 s.material.opacity = s.userData.life;
                 s.rotation.x += 0.1;
                 s.rotation.y += 0.1;
-                if (s.userData.life <= 0) {
-                    scene.remove(s);
-                    explosions.splice(i, 1);
-                }
-            }
-        }
-
-        function applyShake() {
-            if (shakeTime > 0) {
-                camera.position.x += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
-                camera.position.y += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
-                shakeTime--;
+                if (s.userData.life <= 0) { scene.remove(s); explosions.splice(i, 1); }
             }
         }
 
         function updateScope() {
-            if (!ship || !gameActive) {
-                scopeCanvas.style.display = 'none';
-                scopeReticle.style.display = 'none';
-                return;
-            }
-
+            if (!ship || !gameActive) return;
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             let targetInRange = false;
 
-            // Keep scope on if explosions are still happening
+            // SCOPE MOD: Stay ON until explosions finish
             if (explosions.length > 0) {
                 targetInRange = true;
             } else {
@@ -275,41 +244,38 @@
             const container = document.getElementById('indicator-container');
             container.innerHTML = '';
             if(!ship || !gameActive) return;
-            const halfW = window.innerWidth / 2;
-            const halfH = window.innerHeight / 2;
-            const projScreenMatrix = new THREE.Matrix4();
-            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-            const frustum = new THREE.Frustum();
-            frustum.setFromProjectionMatrix(projScreenMatrix);
+            const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2;
+            const projScreenMatrix = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            const frustum = new THREE.Frustum().setFromProjectionMatrix(projScreenMatrix);
             targets.forEach(t => {
                 if (frustum.containsPoint(t.position)) return;
                 const vector = t.position.clone().project(camera);
                 const div = document.createElement('div');
                 div.className = 'indicator';
-                let x = (vector.x * halfW) + halfW;
-                let y = -(vector.y * halfH) + halfH;
-                if (vector.z > 1) {
-                    x = window.innerWidth - x;
-                    y = window.innerHeight - y;
-                    x = (x < halfW) ? 20 : window.innerWidth - 20;
-                }
+                let x = (vector.x * halfW) + halfW, y = -(vector.y * halfH) + halfH;
+                if (vector.z > 1) { x = window.innerWidth - x; y = window.innerHeight - y; x = (x < halfW) ? 20 : window.innerWidth - 20; }
                 x = Math.max(20, Math.min(window.innerWidth - 20, x));
                 y = Math.max(20, Math.min(window.innerHeight - 20, y));
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
+                div.style.left = `${x}px`; div.style.top = `${y}px`;
                 container.appendChild(div);
             });
         }
 
         function onDeviceMove(e) {
+            // UNIVERSAL ORIENTATION: Store calibration offset
             if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
+            
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
+
+            // Correct for 360-degree wrap-around (lying down fix)
+            if (yDiff > 180) yDiff -= 360;
+            if (yDiff < -180) yDiff += 360;
+
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
-                const sign = Math.sign(val);
                 const normalized = Math.min(Math.abs(val) / 35, 1); 
-                return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
+                return Math.sign(val) * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
@@ -336,9 +302,7 @@
                 }
                 ship.position.add(velocityVec);
                 
-                const speedRatio = velocityVec.length() / CONFIG.MAX_VELOCITY;
-                const targetFOV = CONFIG.BASE_FOV + (speedRatio * CONFIG.MAX_FOV_BOOST);
-                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, CONFIG.FOV_SMOOTHING);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST), CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
 
                 handleStarWrap();
@@ -354,12 +318,15 @@
                 }
                 
                 const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion);
-                const lookAtMatrix = new THREE.Matrix4();
-                lookAtMatrix.lookAt(camera.position, ship.position, shipUp);
-                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix);
-                camera.quaternion.slerp(targetQuaternion, 0.08);
+                const lookAtMatrix = new THREE.Matrix4().lookAt(camera.position, ship.position, shipUp);
+                camera.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix), 0.08);
 
-                applyShake();
+                // SHAKE APPLICATION
+                if (shakeTime > 0) {
+                    camera.position.x += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
+                    camera.position.y += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
+                    shakeTime--;
+                }
             }
             handleBullets();
             renderer.render(scene, camera);
@@ -379,9 +346,7 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 30) {
-                        const travelDist = b.position.distanceTo(b.userData.origin);
-                        const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
-                        score += (10 + distanceBonus);
+                        score += 10;
                         createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
@@ -397,10 +362,8 @@
             if (!ship || !gameActive) return;
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
-            const pLight = new THREE.PointLight(0xff00ff, 4500, 200); 
-            pLight.decay = 1.2; 
-            plasma.add(core, pLight); 
-            plasma.position.copy(ship.position);
+            const pLight = new THREE.PointLight(0xff00ff, 4500, 200); pLight.decay = 1.2;
+            plasma.add(core, pLight); plasma.position.copy(ship.position);
             const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
             plasma.userData = { velocity: dir.multiplyScalar(CONFIG.BULLET_SPEED), origin: ship.position.clone(), spawn: Date.now() };
             scene.add(plasma); bullets.push(plasma);
@@ -415,9 +378,8 @@
         function spawnWave() {
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 700 + Math.random() * 900;
                 const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 }));
+                const angle = Math.random() * Math.PI * 2, dist = 700 + Math.random() * 900;
                 t.position.set(center.x + Math.cos(angle)*dist, center.y + (Math.random()-0.5)*600, center.z + Math.sin(angle)*dist - 300);
                 scene.add(t); targets.push(t);
             }
@@ -427,7 +389,7 @@
         function startTimer() {
             const timerInterval = setInterval(() => {
                 if (timeLeft <= 0) { clearInterval(timerInterval); gameActive = false; alert("Final Score: " + score); location.reload(); }
-                else { timeLeft--; const mins = Math.floor(timeLeft / 60); const secs = timeLeft % 60; document.getElementById('timer').textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`; }
+                else { timeLeft--; const mins = Math.floor(timeLeft / 60), secs = timeLeft % 60; document.getElementById('timer').textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`; }
             }, 1000);
         }
 
@@ -446,10 +408,4 @@
             });
             window.addEventListener('deviceorientation', onDeviceMove);
             window.addEventListener('touchstart', (e) => { if (e.target.id !== 'thrustBtn' && e.target.id !== 'zeroBtn') fireLaser(); });
-            thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); });
-            thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); });
-            document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
-        });
-    </script>
-</body>
-</html>
+            thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting =
