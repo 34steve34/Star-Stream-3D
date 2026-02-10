@@ -13,7 +13,7 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
-        #scoreDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
+        #scopeDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
         
@@ -156,7 +156,8 @@
                 return;
             }
 
-            debugDiv.style.display = 'block';
+            // Debug text disabled per request
+            // debugDiv.style.display = 'block';
 
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             
@@ -177,16 +178,14 @@
                 if (targetInRange) break;
             }
 
-            debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
+            // InnerHTML debugging commented out
+            /* debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
                                  `Closest phantom dist: ${closestDist.toFixed(0)}<br>` +
-                                 `Threshold: ${CONFIG.SCOPE_HIT_DISTANCE} | Targets: ${targets.length}`;
+                                 `Threshold: ${CONFIG.SCOPE_HIT_DISTANCE} | Targets: ${targets.length}`; */
 
             if (targetInRange) {
-                // Position scope camera in front of ship's nose
                 const forwardOffset = shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET);
                 scopeCamera.position.copy(ship.position).add(forwardOffset);
-                
-                // Copy ship rotation and flip 180 degrees to look forward
                 scopeCamera.quaternion.copy(ship.quaternion);
                 scopeCamera.rotateY(Math.PI);
 
@@ -371,8 +370,13 @@
             if (!ship || !gameActive) return;
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
-            const pLight = new THREE.PointLight(0xff00ff, 1800, 120); pLight.decay = 1;
-            plasma.add(core, pLight); plasma.position.copy(ship.position);
+            
+            // Boosted point light for better target illumination
+            const pLight = new THREE.PointLight(0xff00ff, 4500, 200); 
+            pLight.decay = 1.2; 
+            
+            plasma.add(core, pLight); 
+            plasma.position.copy(ship.position);
             const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
             plasma.userData = { velocity: dir.multiplyScalar(CONFIG.BULLET_SPEED), origin: ship.position.clone(), spawn: Date.now() };
             scene.add(plasma); bullets.push(plasma);
