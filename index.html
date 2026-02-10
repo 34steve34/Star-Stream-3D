@@ -98,12 +98,12 @@
             SCOPE_FORWARD_OFFSET: 8,
             SCOPE_HIT_DISTANCE: 150,
             BULLET_CHECK_STEP: 20,
-            SCOPE_ACTIVATION_THRESHOLD: 60
+            EXPLOSION_SHARDS: 18
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
         let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
-        let starFields = [], localStars, targets = [], bullets = [], trails = [];
+        let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
@@ -146,42 +146,67 @@
             scopeRenderer.setClearColor(0x000000, 1.0);
         }
 
+        function createExplosion(position) {
+            for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
+                // Random vibrant colors
+                const color = new THREE.Color().setHSL(Math.random(), 1.0, 0.5);
+                const shard = new THREE.Mesh(
+                    new THREE.TetrahedronGeometry(Math.random() * 6 + 2),
+                    new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1.0 })
+                );
+                shard.position.copy(position);
+                
+                // Random outward velocity
+                shard.userData = {
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 12,
+                        (Math.random() - 0.5) * 12,
+                        (Math.random() - 0.5) * 12
+                    ),
+                    life: 1.0
+                };
+                
+                scene.add(shard);
+                explosions.push(shard);
+            }
+        }
+
+        function updateExplosions() {
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const s = explosions[i];
+                s.position.add(s.userData.velocity);
+                s.userData.life -= 0.02; // Fade speed
+                s.material.opacity = s.userData.life;
+                s.rotation.x += 0.1;
+                s.rotation.y += 0.1;
+
+                if (s.userData.life <= 0) {
+                    scene.remove(s);
+                    explosions.splice(i, 1);
+                }
+            }
+        }
+
         function updateScope() {
-            const debugDiv = document.getElementById('scopeDebug');
-            
             if (!ship || !gameActive) {
                 scopeCanvas.style.display = 'none';
                 scopeReticle.style.display = 'none';
-                debugDiv.style.display = 'none';
                 return;
             }
 
-            // Debug text disabled per request
-            // debugDiv.style.display = 'block';
-
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            
             let targetInRange = false;
-            let closestDist = Infinity;
 
             for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
                 const phantomPos = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
-                
                 for (let target of targets) {
-                    const dist = phantomPos.distanceTo(target.position);
-                    if (dist < closestDist) closestDist = dist;
-                    if (dist < CONFIG.SCOPE_HIT_DISTANCE) {
+                    if (phantomPos.distanceTo(target.position) < CONFIG.SCOPE_HIT_DISTANCE) {
                         targetInRange = true;
                         break;
                     }
                 }
                 if (targetInRange) break;
             }
-
-            // InnerHTML debugging commented out
-            /* debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
-                                 `Closest phantom dist: ${closestDist.toFixed(0)}<br>` +
-                                 `Threshold: ${CONFIG.SCOPE_HIT_DISTANCE} | Targets: ${targets.length}`; */
 
             if (targetInRange) {
                 const forwardOffset = shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET);
@@ -226,7 +251,6 @@
             localStars.position.copy(ship.position);
             const positions = localStars.geometry.attributes.position.array;
             const range = CONFIG.LOCAL_STAR_RANGE;
-            
             for(let i=0; i<positions.length; i+=3) {
                 if(positions[i+2] > range/2) positions[i+2] -= range;
                 if(positions[i+2] < -range/2) positions[i+2] += range;
@@ -241,12 +265,9 @@
         function updateIndicators() {
             const container = document.getElementById('indicator-container');
             container.innerHTML = '';
-            
             if(!ship || !gameActive) return;
-
             const halfW = window.innerWidth / 2;
             const halfH = window.innerHeight / 2;
-            
             const projScreenMatrix = new THREE.Matrix4();
             projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
             const frustum = new THREE.Frustum();
@@ -254,23 +275,18 @@
 
             targets.forEach(t => {
                 if (frustum.containsPoint(t.position)) return;
-
                 const vector = t.position.clone().project(camera);
                 const div = document.createElement('div');
                 div.className = 'indicator';
-                
                 let x = (vector.x * halfW) + halfW;
                 let y = -(vector.y * halfH) + halfH;
-
                 if (vector.z > 1) {
                     x = window.innerWidth - x;
                     y = window.innerHeight - y;
                     x = (x < halfW) ? 20 : window.innerWidth - 20;
                 }
-
                 x = Math.max(20, Math.min(window.innerWidth - 20, x));
                 y = Math.max(20, Math.min(window.innerHeight - 20, y));
-
                 div.style.left = `${x}px`;
                 div.style.top = `${y}px`;
                 container.appendChild(div);
@@ -321,6 +337,7 @@
                 handleLocalStars();
                 updateIndicators();
                 updateScope();
+                updateExplosions();
                 
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -356,6 +373,8 @@
                         const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
                         score += (10 + distanceBonus);
                         
+                        createExplosion(t.position);
+                        
                         scene.remove(t); targets.splice(ti, 1);
                         scene.remove(b); bullets.splice(bi, 1);
                         if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
@@ -370,11 +389,8 @@
             if (!ship || !gameActive) return;
             const plasma = new THREE.Group();
             const core = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
-            
-            // Boosted point light for better target illumination
             const pLight = new THREE.PointLight(0xff00ff, 4500, 200); 
             pLight.decay = 1.2; 
-            
             plasma.add(core, pLight); 
             plasma.position.copy(ship.position);
             const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
