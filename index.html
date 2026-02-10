@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.0.0</title>
+    <title>Star Stream - v3.0.1</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -21,34 +21,34 @@
             left: 50%; 
             transform: translateX(-50%); 
             background: rgba(0, 0, 0, 0.9); 
-            padding: 20px; 
+            padding: 15px 20px; 
             border: 2px solid #0ff; 
             border-radius: 10px; 
             color: #0ff; 
-            font-size: 12px; 
+            font-size: 11px; 
             text-align: center; 
             z-index: 100;
-            max-width: 80%;
-            line-height: 1.4;
+            max-width: 85%;
+            line-height: 1.5;
+            display: none;
         }
         
         #orientationMode {
             position: absolute;
             top: 40px;
             left: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 6px 10px;
             border: 1px solid #0ff;
             border-radius: 5px;
             color: #0ff;
-            font-size: 11px;
+            font-size: 10px;
             z-index: 30;
             display: none;
         }
         
         .mode-sitting { border-color: #00ff00; color: #00ff00; }
         .mode-lying { border-color: #ffff00; color: #ffff00; }
-        .mode-unknown { border-color: #ff0000; color: #ff0000; }
         
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
@@ -83,19 +83,18 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.0.0</div>
+    <div id="version">v3.0.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="scopeDebug"></div>
     <div id="orientationMode">MODE: DETECTING...</div>
     <div id="orientationDebug">
-        <div style="font-size: 14px; color: #ff7800; margin-bottom: 10px;">📱 ORIENTATION SETUP</div>
-        <div style="margin-bottom: 10px; font-size: 11px;">
-            <span style="color: #00ff00;">✓ SITTING</span> (beta ≈ 0°) or 
-            <span style="color: #ffff00;">✓ LYING</span> (beta ≈ 175°)
+        <div style="font-size: 13px; color: #ff7800; margin-bottom: 8px;">📱 GET COMFORTABLE</div>
+        <div style="margin-bottom: 8px; font-size: 10px; color: #aaa;">
+            Choose: <span style="color: #00ff00;">SITTING</span> (β≈0°) or <span style="color: #ffff00;">LYING</span> (β≈175°)
         </div>
-        <div style="font-size: 11px; color: #ff7800;">
-            <strong>Current:</strong> <span id="debugBeta">Detecting...</span>
+        <div style="font-size: 11px; color: #ff7800; font-weight: bold;">
+            <span id="debugBeta">Waiting for sensors...</span>
         </div>
     </div>
     <div id="hud">
@@ -145,12 +144,7 @@
             SCOPE_HIT_DISTANCE: 150,
             BULLET_CHECK_STEP: 20,
             EXPLOSION_SHARDS: 18,
-            SHAKE_INTENSITY: 1.5,
-            // Orientation detection thresholds
-            SITTING_MIN_BETA: -30,
-            SITTING_MAX_BETA: 30,
-            LYING_MIN_BETA: 150,
-            LYING_MAX_BETA: 210
+            SHAKE_INTENSITY: 1.5
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -162,10 +156,9 @@
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeTime = 0;
         
-        // Orientation mode tracking
-        let orientationMode = 'unknown'; // 'sitting', 'lying', or 'unknown'
-        let currentBeta = 0;
-        let orientationLocked = false;
+        // NEW: Orientation tracking
+        let orientationMode = 'unknown'; // 'sitting' or 'lying'
+        let detectedAtStart = 'unknown';
 
         function init() {
             scene = new THREE.Scene();
@@ -327,60 +320,37 @@
 
         function updateScope() {
             if (!ship || !scopeCamera) return;
-            scopeCanvas.style.display = 'block';
-            scopeReticle.style.display = 'block';
+            // Only show scope during gameplay (not all the time)
+            if (gameActive) {
+                scopeCanvas.style.display = 'block';
+                scopeReticle.style.display = 'block';
+            }
             const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             scopeCamera.position.copy(ship.position).add(forward.multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
             scopeCamera.quaternion.copy(ship.quaternion);
             scopeRenderer.render(scene, scopeCamera);
         }
 
+        // NEW: Detect orientation mode based on beta angle
         function detectOrientationMode(beta) {
-            // Beta near 0 = sitting, Beta near 180 = lying down
-            if (beta >= CONFIG.SITTING_MIN_BETA && beta <= CONFIG.SITTING_MAX_BETA) {
+            // Sitting: beta near 0° (range -30 to +30)
+            // Lying: beta near 175° (range 150 to 210) or near -175° (range -210 to -150)
+            if (beta >= -30 && beta <= 30) {
                 return 'sitting';
-            } else if (beta >= CONFIG.LYING_MIN_BETA && beta <= CONFIG.LYING_MAX_BETA) {
-                return 'lying';
-            } else if (beta <= -CONFIG.LYING_MIN_BETA && beta >= -CONFIG.LYING_MAX_BETA) {
-                // Handle negative beta range (phone flipped other way)
+            } else if ((beta >= 150 && beta <= 210) || (beta <= -150 && beta >= -210)) {
                 return 'lying';
             } else {
                 return 'unknown';
             }
         }
 
-        function updateOrientationDisplay() {
-            const modeDisplay = document.getElementById('orientationMode');
-            modeDisplay.className = '';
-            
-            switch(orientationMode) {
-                case 'sitting':
-                    modeDisplay.textContent = 'MODE: SITTING ⬆️';
-                    modeDisplay.classList.add('mode-sitting');
-                    break;
-                case 'lying':
-                    modeDisplay.textContent = 'MODE: LYING DOWN ⬇️';
-                    modeDisplay.classList.add('mode-lying');
-                    break;
-                default:
-                    modeDisplay.textContent = 'MODE: UNKNOWN ⚠️';
-                    modeDisplay.classList.add('mode-unknown');
-            }
-        }
-
         function onDeviceMove(e) {
             if (!e.beta || !e.gamma) return;
-            
-            currentBeta = e.beta;
-            
-            // Update orientation mode if not locked (before game starts)
-            if (!orientationLocked) {
-                orientationMode = detectOrientationMode(e.beta);
-                updateOrientationDisplay();
-            }
-            
             if (!isInitialized) { 
                 phoneZero = { beta: e.beta, gamma: e.gamma };
+                // NEW: Lock orientation mode at initialization
+                detectedAtStart = detectOrientationMode(e.beta);
+                orientationMode = detectedAtStart;
                 isInitialized = true; 
                 return; 
             }
@@ -388,11 +358,10 @@
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             
-            // Apply control remapping based on orientation mode
+            // NEW: Apply control remapping for lying mode
             if (orientationMode === 'lying') {
-                // In lying mode (beta ~175°), the control axes are inverted
-                // Gamma changes sign (sitting: -42, lying: +43)
-                // We need to invert both axes to maintain consistent control feel
+                // When lying down, gamma flips sign and beta is ~175°
+                // Invert both axes so controls feel the same as sitting
                 pDiff = -pDiff;
                 yDiff = -yDiff;
             }
@@ -403,7 +372,6 @@
                 const normalized = Math.min(Math.abs(val) / 35, 1); 
                 return sign * Math.pow(normalized, CONFIG.EXPONENT) * sens;
             };
-            
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
         }
@@ -526,50 +494,55 @@
 
         function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
 
-        // Pre-game orientation detection
+        // NEW: Pre-game orientation detection and display
         function startOrientationDetection() {
             const debugElement = document.getElementById('debugBeta');
+            const debugBox = document.getElementById('orientationDebug');
+            debugBox.style.display = 'block';
             
             window.addEventListener('deviceorientation', function preGameOrientation(e) {
                 if (!e.beta || !e.gamma) {
-                    debugElement.innerHTML = '<span style="color: #ff0000;">⚠️ No sensor data</span><br><span style="font-size: 10px;">Enable motion sensors</span>';
+                    debugElement.innerHTML = '<span style="color: #ff0000;">⚠️ Enable motion sensors</span>';
                     return;
                 }
                 
-                currentBeta = e.beta;
                 const mode = detectOrientationMode(e.beta);
-                
-                let modeText = '';
-                let modeColor = '#888';
+                let modeText = '', modeColor = '#888';
                 
                 if (mode === 'sitting') {
-                    modeText = '✓ SITTING POSITION';
+                    modeText = '✓ SITTING';
                     modeColor = '#00ff00';
                 } else if (mode === 'lying') {
-                    modeText = '✓ LYING DOWN POSITION';
+                    modeText = '✓ LYING DOWN';
                     modeColor = '#ffff00';
                 } else {
-                    modeText = '⚠️ ADJUST POSITION';
+                    modeText = '⚠️ ADJUST';
                     modeColor = '#ff7800';
                 }
                 
-                debugElement.innerHTML = `
-                    <span style="color: ${modeColor}; font-size: 14px;">${modeText}</span><br>
-                    <span style="font-size: 10px; color: #666;">β:${e.beta.toFixed(1)}° γ:${e.gamma.toFixed(1)}°</span>
-                `;
+                debugElement.innerHTML = `<span style="color: ${modeColor};">${modeText}</span> (β:${e.beta.toFixed(0)}° γ:${e.gamma.toFixed(0)}°)`;
             });
         }
 
-        // Start orientation detection immediately
+        // Start detecting orientation before game starts
         startOrientationDetection();
 
         document.getElementById('startBtn').addEventListener('click', function() {
-            // Lock in the current orientation mode
-            orientationLocked = true;
-            
-            // Hide orientation debug and show game UI
+            // Hide orientation debug, show mode indicator
             document.getElementById('orientationDebug').style.display = 'none';
-            document.getElementById('orientationMode').style.display = 'block';
+            const modeDisplay = document.getElementById('orientationMode');
+            modeDisplay.style.display = 'block';
+            
+            // Update mode display based on what was detected
+            if (detectedAtStart === 'sitting') {
+                modeDisplay.textContent = 'MODE: SITTING ⬆️';
+                modeDisplay.classList.add('mode-sitting');
+            } else if (detectedAtStart === 'lying') {
+                modeDisplay.textContent = 'MODE: LYING ⬇️';
+                modeDisplay.classList.add('mode-lying');
+            } else {
+                modeDisplay.textContent = 'MODE: LOCKED';
+            }
             
             this.style.display = 'none'; 
             document.getElementById('hud').style.display = 'block'; 
