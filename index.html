@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.5.0</title>
+    <title>Star Stream - v2.6.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -47,7 +47,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v2.5.0</div>
+    <div id="version">v2.6.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -94,7 +94,9 @@
             FOV_SMOOTHING: 0.03,
             SCOPE_RANGE: 150,
             SCOPE_FOV: 25,
-            SCOPE_FORWARD_OFFSET: 8
+            SCOPE_FORWARD_OFFSET: 8,
+            SCOPE_THRESHOLD: 60,
+            SCOPE_ACTIVATION_THRESHOLD: 60
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -171,8 +173,8 @@
                     // Calculate perpendicular distance from ray to target center
                     const distanceToRay = target.position.distanceTo(closestPointOnRay);
                     
-                    // If target is within 40 units of the firing line and within reasonable range
-                    if (distanceToRay < 40 && projection < CONFIG.SCOPE_RANGE) {
+                    // If target is within threshold of the firing line and within reasonable range
+                    if (distanceToRay < CONFIG.SCOPE_THRESHOLD && projection < CONFIG.SCOPE_RANGE) {
                         targetInRange = true;
                         closestDistance = Math.min(closestDistance, distanceToRay);
                     }
@@ -323,12 +325,19 @@
                 updateIndicators();
                 updateScope();
                 
-                camera.lookAt(ship.position);
+                // Position camera behind ship
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
                     const followDir = new THREE.Vector3().subVectors(ship.position, camera.position).normalize();
                     camera.position.add(followDir.multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
                 }
+                
+                // Orient camera to match ship's roll (keep ship "upright" in view)
+                const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion);
+                const lookAtMatrix = new THREE.Matrix4();
+                lookAtMatrix.lookAt(camera.position, ship.position, shipUp);
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix);
+                camera.quaternion.slerp(targetQuaternion, 0.08);
             }
             handleBullets();
             renderer.render(scene, camera);
