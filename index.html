@@ -17,19 +17,19 @@
         
         #orientationDebug { 
             position: absolute; 
-            top: 50%; 
+            top: 60px; 
             left: 50%; 
-            transform: translate(-50%, -50%); 
+            transform: translateX(-50%); 
             background: rgba(0, 0, 0, 0.9); 
-            padding: 30px; 
+            padding: 20px; 
             border: 2px solid #0ff; 
             border-radius: 10px; 
             color: #0ff; 
-            font-size: 14px; 
+            font-size: 12px; 
             text-align: center; 
             z-index: 100;
             max-width: 80%;
-            line-height: 1.6;
+            line-height: 1.4;
         }
         
         #orientationMode {
@@ -89,25 +89,13 @@
     <div id="scopeDebug"></div>
     <div id="orientationMode">MODE: DETECTING...</div>
     <div id="orientationDebug">
-        <div style="font-size: 18px; color: #ff7800; margin-bottom: 15px;">📱 ORIENTATION SETUP</div>
-        <div style="margin-bottom: 20px;">
-            <strong>Choose your playing position:</strong><br>
-            <span style="color: #888;">The game will detect and adapt to your posture</span>
+        <div style="font-size: 14px; color: #ff7800; margin-bottom: 10px;">📱 ORIENTATION SETUP</div>
+        <div style="margin-bottom: 10px; font-size: 11px;">
+            <span style="color: #00ff00;">✓ SITTING</span> (beta ≈ 0°) or 
+            <span style="color: #ffff00;">✓ LYING</span> (beta ≈ 175°)
         </div>
-        <div style="margin-bottom: 15px;">
-            <div style="color: #00ff00;">✓ SITTING UP</div>
-            <div style="font-size: 11px; color: #888;">Phone tilted toward you (30-60°)</div>
-        </div>
-        <div style="margin-bottom: 20px;">
-            <div style="color: #ffff00;">✓ LYING DOWN</div>
-            <div style="font-size: 11px; color: #888;">Phone perpendicular, screen facing you (70-110°)</div>
-        </div>
-        <div style="font-size: 12px; color: #ff7800;">
-            <strong>Current orientation:</strong><br>
-            <span id="debugBeta">Detecting...</span>
-        </div>
-        <div style="margin-top: 20px; font-size: 11px; color: #888;">
-            Tip: Get comfortable, then press START
+        <div style="font-size: 11px; color: #ff7800;">
+            <strong>Current:</strong> <span id="debugBeta">Detecting...</span>
         </div>
     </div>
     <div id="hud">
@@ -159,10 +147,10 @@
             EXPLOSION_SHARDS: 18,
             SHAKE_INTENSITY: 1.5,
             // Orientation detection thresholds
-            SITTING_MIN_BETA: 30,
-            SITTING_MAX_BETA: 70,
-            LYING_MIN_BETA: 70,
-            LYING_MAX_BETA: 110
+            SITTING_MIN_BETA: -30,
+            SITTING_MAX_BETA: 30,
+            LYING_MIN_BETA: 150,
+            LYING_MAX_BETA: 210
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
@@ -348,12 +336,13 @@
         }
 
         function detectOrientationMode(beta) {
-            // Absolute value of beta to handle phone flipping
-            const absBeta = Math.abs(beta);
-            
-            if (absBeta >= CONFIG.SITTING_MIN_BETA && absBeta < CONFIG.SITTING_MAX_BETA) {
+            // Beta near 0 = sitting, Beta near 180 = lying down
+            if (beta >= CONFIG.SITTING_MIN_BETA && beta <= CONFIG.SITTING_MAX_BETA) {
                 return 'sitting';
-            } else if (absBeta >= CONFIG.LYING_MIN_BETA && absBeta <= CONFIG.LYING_MAX_BETA) {
+            } else if (beta >= CONFIG.LYING_MIN_BETA && beta <= CONFIG.LYING_MAX_BETA) {
+                return 'lying';
+            } else if (beta <= -CONFIG.LYING_MIN_BETA && beta >= -CONFIG.LYING_MAX_BETA) {
+                // Handle negative beta range (phone flipped other way)
                 return 'lying';
             } else {
                 return 'unknown';
@@ -401,10 +390,10 @@
             
             // Apply control remapping based on orientation mode
             if (orientationMode === 'lying') {
-                // In lying mode, the axes are inverted from the player's perspective
-                // We need to flip the pitch control
+                // In lying mode (beta ~175°), the control axes are inverted
+                // Gamma changes sign (sitting: -42, lying: +43)
+                // We need to invert both axes to maintain consistent control feel
                 pDiff = -pDiff;
-                // And adjust the yaw mapping
                 yDiff = -yDiff;
             }
             
@@ -565,8 +554,8 @@
                 }
                 
                 debugElement.innerHTML = `
-                    <span style="color: ${modeColor}; font-size: 16px;">${modeText}</span><br>
-                    <span style="font-size: 10px; color: #666;">Beta: ${Math.abs(e.beta).toFixed(1)}° | Gamma: ${e.gamma.toFixed(1)}°</span>
+                    <span style="color: ${modeColor}; font-size: 14px;">${modeText}</span><br>
+                    <span style="font-size: 10px; color: #666;">β:${e.beta.toFixed(1)}° γ:${e.gamma.toFixed(1)}°</span>
                 `;
             });
         }
