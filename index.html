@@ -13,6 +13,7 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
+        #scopeDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
         
@@ -50,6 +51,7 @@
     <div id="version">v2.6.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
+    <div id="scopeDebug"></div>
     <div id="hud">
         <div id="timer">03:00</div>
         <div>SCORE: <span id="score">0</span></div>
@@ -145,11 +147,16 @@
         }
 
         function updateScope() {
+            const debugDiv = document.getElementById('scopeDebug');
+            
             if (!ship || !gameActive) {
                 scopeCanvas.style.display = 'none';
                 scopeReticle.style.display = 'none';
+                debugDiv.style.display = 'none';
                 return;
             }
+
+            debugDiv.style.display = 'block';
 
             // Calculate ray from ship's nose forward
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
@@ -157,6 +164,7 @@
             
             let closestDistance = Infinity;
             let targetInRange = false;
+            let debugInfo = '';
 
             // Check each target's distance to the firing line
             for (let target of targets) {
@@ -173,6 +181,8 @@
                     // Calculate perpendicular distance from ray to target center
                     const distanceToRay = target.position.distanceTo(closestPointOnRay);
                     
+                    debugInfo += `Dist:${distanceToRay.toFixed(0)} Proj:${projection.toFixed(0)} | `;
+                    
                     // If target is within threshold of the firing line and within reasonable range
                     if (distanceToRay < CONFIG.SCOPE_THRESHOLD && projection < CONFIG.SCOPE_RANGE) {
                         targetInRange = true;
@@ -180,6 +190,8 @@
                     }
                 }
             }
+
+            debugDiv.innerHTML = `Scope: ${targetInRange ? 'ACTIVE' : 'off'}<br>${debugInfo}<br>Threshold: ${CONFIG.SCOPE_THRESHOLD}`;
 
             if (targetInRange) {
                 // Position scope camera in front of ship's nose
