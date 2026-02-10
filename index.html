@@ -148,19 +148,33 @@
                 return;
             }
 
-            // Check if any target is within range and roughly in line of sight
-            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+            // Calculate ray from ship's nose forward
+            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            const shipNose = ship.position.clone();
+            
+            let closestDistance = Infinity;
             let targetInRange = false;
 
+            // Check each target's distance to the firing line
             for (let target of targets) {
-                const toTarget = new THREE.Vector3().subVectors(target.position, ship.position);
-                const distance = toTarget.length();
-                const angle = shipForward.angleTo(toTarget);
-
-                // Target is in range and within ~30 degree cone
-                if (distance < CONFIG.SCOPE_RANGE && angle < Math.PI / 6) {
-                    targetInRange = true;
-                    break;
+                const toTarget = new THREE.Vector3().subVectors(target.position, shipNose);
+                
+                // Project toTarget onto shipForward to find closest point on ray
+                const projection = toTarget.dot(shipForward);
+                
+                // Only consider targets in front of ship
+                if (projection > 0) {
+                    // Find closest point on ray to target
+                    const closestPointOnRay = shipForward.clone().multiplyScalar(projection).add(shipNose);
+                    
+                    // Calculate perpendicular distance from ray to target center
+                    const distanceToRay = target.position.distanceTo(closestPointOnRay);
+                    
+                    // If target is within 40 units of the firing line and within reasonable range
+                    if (distanceToRay < 40 && projection < CONFIG.SCOPE_RANGE) {
+                        targetInRange = true;
+                        closestDistance = Math.min(closestDistance, distanceToRay);
+                    }
                 }
             }
 
@@ -235,26 +249,31 @@
             frustum.setFromProjectionMatrix(projScreenMatrix);
 
             targets.forEach(t => {
+                // RULE: If target is in the forward view, hide the bloom entirely
                 if (frustum.containsPoint(t.position)) return;
+
+                const vector = t.position.clone().project(camera);
+                const div = document.createElement('div');
+                div.className = 'indicator';
                 
-                const toTarget = new THREE.Vector3().subVectors(t.position, ship.position);
-                const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                
-                const x = toTarget.dot(camRight);
-                const y = toTarget.dot(camUp);
-                
-                const angle = Math.atan2(x, -y);
-                const edgeDist = 40;
-                const indicatorX = halfW + Math.sin(angle) * (halfW - edgeDist);
-                const indicatorY = halfH - Math.cos(angle) * (halfH - edgeDist);
-                
-                const indicator = document.createElement('div');
-                indicator.className = 'indicator';
-                indicator.style.left = `${indicatorX}px`;
-                indicator.style.top = `${indicatorY}px`;
-                container.appendChild(indicator);
+                let x = (vector.x * halfW) + halfW;
+                let y = -(vector.y * halfH) + halfH;
+
+                // Handle targets behind the camera (z > 1 after projection)
+                if (vector.z > 1) {
+                    x = window.innerWidth - x;
+                    y = window.innerHeight - y;
+                    // Mirror to ensure it points the right way on the perimeter
+                    x = (x < halfW) ? 20 : window.innerWidth - 20;
+                }
+
+                // FORCE TO PERIMETER: Clamp to edges with a 20px margin
+                x = Math.max(20, Math.min(window.innerWidth - 20, x));
+                y = Math.max(20, Math.min(window.innerHeight - 20, y));
+
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                container.appendChild(div);
             });
         }
 
