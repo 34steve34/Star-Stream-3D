@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v2.6.0</title>
+    <title>Star Stream - v2.7.1</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -48,7 +48,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v2.6.0</div>
+    <div id="version">v2.7.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="scopeDebug"></div>
@@ -94,10 +94,11 @@
             BASE_FOV: 75,
             MAX_FOV_BOOST: 18,
             FOV_SMOOTHING: 0.03,
-            SCOPE_RANGE: 150,
+            SCOPE_RANGE: 2000,
             SCOPE_FOV: 25,
             SCOPE_FORWARD_OFFSET: 8,
-            SCOPE_THRESHOLD: 60,
+            SCOPE_THRESHOLD: 500,
+            TARGET_RADIUS: 15,
             SCOPE_ACTIVATION_THRESHOLD: 60
         };
 
@@ -163,8 +164,9 @@
             const shipNose = ship.position.clone();
             
             let closestDistance = Infinity;
+            let closestSurfaceDist = Infinity;
+            let closestProj = 0;
             let targetInRange = false;
-            let debugInfo = '';
 
             // Check each target's distance to the firing line
             for (let target of targets) {
@@ -181,17 +183,26 @@
                     // Calculate perpendicular distance from ray to target center
                     const distanceToRay = target.position.distanceTo(closestPointOnRay);
                     
-                    debugInfo += `Dist:${distanceToRay.toFixed(0)} Proj:${projection.toFixed(0)} | `;
+                    // Distance from firing line to target SURFACE (accounting for target radius)
+                    const distanceToSurface = Math.max(0, distanceToRay - CONFIG.TARGET_RADIUS);
                     
-                    // If target is within threshold of the firing line and within reasonable range
-                    if (distanceToRay < CONFIG.SCOPE_THRESHOLD && projection < CONFIG.SCOPE_RANGE) {
+                    // Track the closest target
+                    if (distanceToSurface < closestSurfaceDist) {
+                        closestSurfaceDist = distanceToSurface;
+                        closestDistance = distanceToRay;
+                        closestProj = projection;
+                    }
+                    
+                    // If firing line passes within threshold of target surface
+                    if (distanceToSurface < CONFIG.SCOPE_THRESHOLD && projection < CONFIG.SCOPE_RANGE) {
                         targetInRange = true;
-                        closestDistance = Math.min(closestDistance, distanceToRay);
                     }
                 }
             }
 
-            debugDiv.innerHTML = `Scope: ${targetInRange ? 'ACTIVE' : 'off'}<br>${debugInfo}<br>Threshold: ${CONFIG.SCOPE_THRESHOLD}`;
+            debugDiv.innerHTML = `Scope: ${targetInRange ? '<span style="color:#0f0">ACTIVE</span>' : 'OFF'}<br>` +
+                                 `Closest: Dist=${closestDistance.toFixed(0)} Surf=${closestSurfaceDist.toFixed(0)} Proj=${closestProj.toFixed(0)}<br>` +
+                                 `Threshold: ${CONFIG.SCOPE_THRESHOLD} | Targets: ${targets.length}`;
 
             if (targetInRange) {
                 // Position scope camera in front of ship's nose
