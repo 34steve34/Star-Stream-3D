@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.0.1</title>
+    <title>Star Stream - v2.9.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -14,42 +14,6 @@
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
         #scopeDebug { position: absolute; top: 120px; left: 10px; color: #ffff00; font-size: 11px; z-index: 30; display: none; }
-        
-        #orientationDebug { 
-            position: absolute; 
-            top: 60px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(0, 0, 0, 0.9); 
-            padding: 15px 20px; 
-            border: 2px solid #0ff; 
-            border-radius: 10px; 
-            color: #0ff; 
-            font-size: 11px; 
-            text-align: center; 
-            z-index: 100;
-            max-width: 85%;
-            line-height: 1.5;
-            display: none;
-        }
-        
-        #orientationMode {
-            position: absolute;
-            top: 40px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 6px 10px;
-            border: 1px solid #0ff;
-            border-radius: 5px;
-            color: #0ff;
-            font-size: 10px;
-            z-index: 30;
-            display: none;
-        }
-        
-        .mode-sitting { border-color: #00ff00; color: #00ff00; }
-        .mode-lying { border-color: #ffff00; color: #ffff00; }
-        
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
         
@@ -83,20 +47,10 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.0.1</div>
+    <div id="version">v2.9.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="scopeDebug"></div>
-    <div id="orientationMode">MODE: DETECTING...</div>
-    <div id="orientationDebug">
-        <div style="font-size: 13px; color: #ff7800; margin-bottom: 8px;">📱 GET COMFORTABLE</div>
-        <div style="margin-bottom: 8px; font-size: 10px; color: #aaa;">
-            Choose: <span style="color: #00ff00;">SITTING</span> (β≈0°) or <span style="color: #ffff00;">LYING</span> (β≈175°)
-        </div>
-        <div style="font-size: 11px; color: #ff7800; font-weight: bold;">
-            <span id="debugBeta">Waiting for sensors...</span>
-        </div>
-    </div>
     <div id="hud">
         <div id="timer">03:00</div>
         <div>SCORE: <span id="score">0</span></div>
@@ -155,10 +109,6 @@
         let velocityVec = new THREE.Vector3(0, 0, 0);
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeTime = 0;
-        
-        // NEW: Orientation tracking
-        let orientationMode = 'unknown'; // 'sitting' or 'lying'
-        let detectedAtStart = 'unknown';
 
         function init() {
             scene = new THREE.Scene();
@@ -198,174 +148,163 @@
         }
 
         function createExplosion(position) {
-            shakeTime = 15;
-            const exp = { particles: [], life: 30 };
+            shakeTime = 15; // Trigger shake
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
-                const particle = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(2 + Math.random() * 3),
-                    new THREE.MeshBasicMaterial({ color: 0xff00ff })
+                const color = new THREE.Color().setHSL(Math.random(), 1.0, 0.5);
+                const shard = new THREE.Mesh(
+                    new THREE.TetrahedronGeometry(Math.random() * 6 + 2),
+                    new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1.0 })
                 );
-                particle.position.copy(position);
-                const randDir = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
-                ).normalize().multiplyScalar(2 + Math.random() * 3);
-                particle.userData.vel = randDir;
-                particle.userData.rotVel = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.3,
-                    (Math.random() - 0.5) * 0.3,
-                    (Math.random() - 0.5) * 0.3
-                );
-                scene.add(particle);
-                exp.particles.push(particle);
+                shard.position.copy(position);
+                shard.userData = {
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 12,
+                        (Math.random() - 0.5) * 12,
+                        (Math.random() - 0.5) * 12
+                    ),
+                    life: 1.0
+                };
+                scene.add(shard);
+                explosions.push(shard);
             }
-            explosions.push(exp);
         }
 
         function updateExplosions() {
-            explosions.forEach((exp, idx) => {
-                exp.life--;
-                exp.particles.forEach(p => {
-                    p.position.add(p.userData.vel);
-                    p.rotation.x += p.userData.rotVel.x;
-                    p.rotation.y += p.userData.rotVel.y;
-                    p.rotation.z += p.userData.rotVel.z;
-                    p.material.opacity = exp.life / 30;
-                    p.material.transparent = true;
-                });
-                if (exp.life <= 0) {
-                    exp.particles.forEach(p => scene.remove(p));
-                    explosions.splice(idx, 1);
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const s = explosions[i];
+                s.position.add(s.userData.velocity);
+                s.userData.life -= 0.02;
+                s.material.opacity = s.userData.life;
+                s.rotation.x += 0.1;
+                s.rotation.y += 0.1;
+                if (s.userData.life <= 0) {
+                    scene.remove(s);
+                    explosions.splice(i, 1);
                 }
-            });
-            trails.forEach((t, idx) => {
-                t.material.opacity -= 0.02;
-                if (t.material.opacity <= 0) { scene.remove(t); trails.splice(idx, 1); }
-            });
+            }
         }
 
         function applyShake() {
             if (shakeTime > 0) {
-                const intensity = (shakeTime / 15) * CONFIG.SHAKE_INTENSITY;
-                camera.position.x += (Math.random() - 0.5) * intensity;
-                camera.position.y += (Math.random() - 0.5) * intensity;
-                camera.position.z += (Math.random() - 0.5) * intensity;
+                camera.position.x += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
+                camera.position.y += (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY;
                 shakeTime--;
+            }
+        }
+
+        function updateScope() {
+            if (!ship || !gameActive) {
+                scopeCanvas.style.display = 'none';
+                scopeReticle.style.display = 'none';
+                return;
+            }
+
+            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            let targetInRange = false;
+
+            // Keep scope on if explosions are still happening
+            if (explosions.length > 0) {
+                targetInRange = true;
+            } else {
+                for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
+                    const phantomPos = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
+                    for (let target of targets) {
+                        if (phantomPos.distanceTo(target.position) < CONFIG.SCOPE_HIT_DISTANCE) {
+                            targetInRange = true;
+                            break;
+                        }
+                    }
+                    if (targetInRange) break;
+                }
+            }
+
+            if (targetInRange) {
+                const forwardOffset = shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET);
+                scopeCamera.position.copy(ship.position).add(forwardOffset);
+                scopeCamera.quaternion.copy(ship.quaternion);
+                scopeCamera.rotateY(Math.PI);
+                scopeRenderer.render(scene, scopeCamera);
+                scopeCanvas.style.display = 'block';
+                scopeReticle.style.display = 'block';
+            } else {
+                scopeCanvas.style.display = 'none';
+                scopeReticle.style.display = 'none';
             }
         }
 
         function initStars() {
             const starGeo = new THREE.BufferGeometry();
-            const starCount = 3000;
-            const positions = new Float32Array(starCount * 3);
-            for (let i = 0; i < starCount * 3; i += 3) {
-                positions[i] = (Math.random() - 0.5) * 20000;
-                positions[i + 1] = (Math.random() - 0.5) * 20000;
-                positions[i + 2] = (Math.random() - 0.5) * 20000;
-            }
-            starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
-            for (let sx = -1; sx <= 1; sx++) {
-                for (let sy = -1; sy <= 1; sy++) {
-                    for (let sz = -1; sz <= 1; sz++) {
-                        const field = new THREE.Points(starGeo, starMat);
-                        field.position.set(sx * CONFIG.SECTOR_SIZE, sy * CONFIG.SECTOR_SIZE, sz * CONFIG.SECTOR_SIZE);
-                        scene.add(field);
-                        starFields.push(field);
-                    }
-                }
+            const starPos = new Float32Array(250 * 3);
+            for(let i=0; i<250*3; i++) starPos[i] = (Math.random()-0.5) * CONFIG.SECTOR_SIZE;
+            starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 4, transparent: true, opacity: 0.8 });
+            for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) for(let z=-1; z<=1; z++) {
+                const points = new THREE.Points(starGeo, starMat);
+                points.position.set(x * CONFIG.SECTOR_SIZE, y * CONFIG.SECTOR_SIZE, z * CONFIG.SECTOR_SIZE);
+                scene.add(points); starFields.push(points);
             }
         }
 
         function initLocalStars() {
-            const localGeo = new THREE.BufferGeometry();
-            const positions = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
-            for (let i = 0; i < CONFIG.LOCAL_STAR_COUNT * 3; i += 3) {
-                positions[i] = (Math.random() - 0.5) * CONFIG.LOCAL_STAR_RANGE;
-                positions[i + 1] = (Math.random() - 0.5) * CONFIG.LOCAL_STAR_RANGE;
-                positions[i + 2] = (Math.random() - 0.5) * CONFIG.LOCAL_STAR_RANGE;
-            }
-            localGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const localMat = new THREE.PointsMaterial({ color: 0xaaaaff, size: 1.5 });
-            localStars = new THREE.Points(localGeo, localMat);
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
+            for(let i=0; i<CONFIG.LOCAL_STAR_COUNT * 3; i++) pos[i] = (Math.random()-0.5) * CONFIG.LOCAL_STAR_RANGE;
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.7 });
+            localStars = new THREE.Points(geo, mat);
             scene.add(localStars);
         }
 
         function handleLocalStars() {
-            if (ship) {
-                localStars.position.lerp(ship.position, 0.05);
+            if(!localStars || !ship) return;
+            localStars.position.copy(ship.position);
+            const positions = localStars.geometry.attributes.position.array;
+            const range = CONFIG.LOCAL_STAR_RANGE;
+            for(let i=0; i<positions.length; i+=3) {
+                if(positions[i+2] > range/2) positions[i+2] -= range;
+                if(positions[i+2] < -range/2) positions[i+2] += range;
+                if(positions[i] > range/2) positions[i] -= range;
+                if(positions[i] < -range/2) positions[i] += range;
+                if(positions[i+1] > range/2) positions[i+1] -= range;
+                if(positions[i+1] < -range/2) positions[i+1] += range;
             }
+            localStars.geometry.attributes.position.needsUpdate = true;
         }
 
         function updateIndicators() {
             const container = document.getElementById('indicator-container');
             container.innerHTML = '';
+            if(!ship || !gameActive) return;
+            const halfW = window.innerWidth / 2;
+            const halfH = window.innerHeight / 2;
+            const projScreenMatrix = new THREE.Matrix4();
+            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            const frustum = new THREE.Frustum();
+            frustum.setFromProjectionMatrix(projScreenMatrix);
             targets.forEach(t => {
-                const screenPos = t.position.clone().project(camera);
-                if (screenPos.z < 1) {
-                    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-                    const y = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
-                    const margin = 30;
-                    if (x < margin || x > window.innerWidth - margin || y < margin || y > window.innerHeight - margin) {
-                        const indicator = document.createElement('div');
-                        indicator.className = 'indicator';
-                        indicator.style.left = Math.max(margin, Math.min(window.innerWidth - margin, x)) + 'px';
-                        indicator.style.top = Math.max(margin, Math.min(window.innerHeight - margin, y)) + 'px';
-                        container.appendChild(indicator);
-                    }
+                if (frustum.containsPoint(t.position)) return;
+                const vector = t.position.clone().project(camera);
+                const div = document.createElement('div');
+                div.className = 'indicator';
+                let x = (vector.x * halfW) + halfW;
+                let y = -(vector.y * halfH) + halfH;
+                if (vector.z > 1) {
+                    x = window.innerWidth - x;
+                    y = window.innerHeight - y;
+                    x = (x < halfW) ? 20 : window.innerWidth - 20;
                 }
+                x = Math.max(20, Math.min(window.innerWidth - 20, x));
+                y = Math.max(20, Math.min(window.innerHeight - 20, y));
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+                container.appendChild(div);
             });
         }
 
-        function updateScope() {
-            if (!ship || !scopeCamera) return;
-            // Only show scope during gameplay (not all the time)
-            if (gameActive) {
-                scopeCanvas.style.display = 'block';
-                scopeReticle.style.display = 'block';
-            }
-            const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            scopeCamera.position.copy(ship.position).add(forward.multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
-            scopeCamera.quaternion.copy(ship.quaternion);
-            scopeRenderer.render(scene, scopeCamera);
-        }
-
-        // NEW: Detect orientation mode based on beta angle
-        function detectOrientationMode(beta) {
-            // Sitting: beta near 0° (range -30 to +30)
-            // Lying: beta near 175° (range 150 to 210) or near -175° (range -210 to -150)
-            if (beta >= -30 && beta <= 30) {
-                return 'sitting';
-            } else if ((beta >= 150 && beta <= 210) || (beta <= -150 && beta >= -210)) {
-                return 'lying';
-            } else {
-                return 'unknown';
-            }
-        }
-
         function onDeviceMove(e) {
-            if (!e.beta || !e.gamma) return;
-            if (!isInitialized) { 
-                phoneZero = { beta: e.beta, gamma: e.gamma };
-                // NEW: Lock orientation mode at initialization
-                detectedAtStart = detectOrientationMode(e.beta);
-                orientationMode = detectedAtStart;
-                isInitialized = true; 
-                return; 
-            }
-            
+            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-            
-            // NEW: Apply control remapping for lying mode
-            if (orientationMode === 'lying') {
-                // When lying down, gamma flips sign and beta is ~175°
-                // Invert both axes so controls feel the same as sitting
-                pDiff = -pDiff;
-                yDiff = -yDiff;
-            }
-            
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 const sign = Math.sign(val);
@@ -494,63 +433,9 @@
 
         function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
 
-        // NEW: Pre-game orientation detection and display
-        function startOrientationDetection() {
-            const debugElement = document.getElementById('debugBeta');
-            const debugBox = document.getElementById('orientationDebug');
-            debugBox.style.display = 'block';
-            
-            window.addEventListener('deviceorientation', function preGameOrientation(e) {
-                if (!e.beta || !e.gamma) {
-                    debugElement.innerHTML = '<span style="color: #ff0000;">⚠️ Enable motion sensors</span>';
-                    return;
-                }
-                
-                const mode = detectOrientationMode(e.beta);
-                let modeText = '', modeColor = '#888';
-                
-                if (mode === 'sitting') {
-                    modeText = '✓ SITTING';
-                    modeColor = '#00ff00';
-                } else if (mode === 'lying') {
-                    modeText = '✓ LYING DOWN';
-                    modeColor = '#ffff00';
-                } else {
-                    modeText = '⚠️ ADJUST';
-                    modeColor = '#ff7800';
-                }
-                
-                debugElement.innerHTML = `<span style="color: ${modeColor};">${modeText}</span> (β:${e.beta.toFixed(0)}° γ:${e.gamma.toFixed(0)}°)`;
-            });
-        }
-
-        // Start detecting orientation before game starts
-        startOrientationDetection();
-
         document.getElementById('startBtn').addEventListener('click', function() {
-            // Hide orientation debug, show mode indicator
-            document.getElementById('orientationDebug').style.display = 'none';
-            const modeDisplay = document.getElementById('orientationMode');
-            modeDisplay.style.display = 'block';
-            
-            // Update mode display based on what was detected
-            if (detectedAtStart === 'sitting') {
-                modeDisplay.textContent = 'MODE: SITTING ⬆️';
-                modeDisplay.classList.add('mode-sitting');
-            } else if (detectedAtStart === 'lying') {
-                modeDisplay.textContent = 'MODE: LYING ⬇️';
-                modeDisplay.classList.add('mode-lying');
-            } else {
-                modeDisplay.textContent = 'MODE: LOCKED';
-            }
-            
-            this.style.display = 'none'; 
-            document.getElementById('hud').style.display = 'block'; 
-            document.getElementById('thrustBtn').style.display = 'block';
-            
-            gameActive = true; 
-            init();
-            
+            this.style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
+            gameActive = true; init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene;
                 engineBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.8 }));
@@ -559,7 +444,6 @@
                 ship.add(engineBeam, engineLight); scene.add(ship);
                 ship.position.set(0, 0, -100); ship.scale.setScalar(3.0); ship.rotation.set(0, Math.PI, 0);
             });
-            
             window.addEventListener('deviceorientation', onDeviceMove);
             window.addEventListener('touchstart', (e) => { if (e.target.id !== 'thrustBtn' && e.target.id !== 'zeroBtn') fireLaser(); });
             thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); });
