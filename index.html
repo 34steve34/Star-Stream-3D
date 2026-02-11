@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.1.1</title>
+    <title>Star Stream - v3.2.0</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.1.1</div>
+    <div id="version">v3.2.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -71,6 +71,11 @@
         let isInitialized = false, isThrusting = false, gameActive = false, shakeTime = 0;
         let velocityVec = new THREE.Vector3(0, 0, 0);
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
+        
+        // NEW: Orientation detection variables
+        let orientationMode = 'upright'; // 'upright' (sitting) or 'facedown' (lying in bed)
+        let pitchMultiplier = 1;
+        let yawMultiplier = 1;
 
         function init() {
             scene = new THREE.Scene();
@@ -150,16 +155,49 @@
         }
 
         function onDeviceMove(e) {
-            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
+            if (!isInitialized) { 
+                // Store zero position
+                phoneZero = { beta: e.beta, gamma: e.gamma };
+                
+                // NEW: Detect orientation mode based on beta angle
+                // When sitting (screen facing sky): beta is typically -30 to +60 degrees
+                // When lying down (screen facing ground/face): beta is typically 120 to 180 or -120 to -180
+                const absBeta = Math.abs(e.beta);
+                
+                if (absBeta > 90) {
+                    // Screen is facing downward (lying in bed looking up at phone)
+                    orientationMode = 'facedown';
+                    pitchMultiplier = -1;  // Invert pitch (left/right tilt)
+                    yawMultiplier = -1;    // Invert yaw (forward/back tilt)
+                } else {
+                    // Screen is facing upward (sitting, phone pointing at sky)
+                    orientationMode = 'upright';
+                    pitchMultiplier = 1;   // Normal controls
+                    yawMultiplier = 1;     // Normal controls
+                }
+                
+                isInitialized = true; 
+                return; 
+            }
+            
+            // Calculate differences from zero position (UNCHANGED)
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-            if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
+            
+            // Handle wraparound (UNCHANGED)
+            if (yDiff > 180) yDiff -= 360; 
+            if (yDiff < -180) yDiff += 360;
+            
+            // Apply curve to raw differences (UNCHANGED)
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 return Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             };
-            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
+            
+            // NEW: Apply orientation multipliers to the curved values
+            // This ensures controls feel natural in both positions
+            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY) * pitchMultiplier;
+            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
 
         function animate() {
