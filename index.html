@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Star Stream - v3.2.3</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Star Stream">
+    <link rel="apple-touch-icon" href="./icon192.png">
+    
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -416,6 +425,21 @@
         thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); }, { passive: false });
         window.addEventListener('touchstart', (e) => { if (gameActive && e.target.id !== 'thrustBtn' && e.target.id !== 'zeroBtn') fireLaser(); });
         document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
+    </script>
+    
+    <script>
+        // Register Service Worker for offline functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registered:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
     </script>
 </body>
 </html>
