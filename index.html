@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.2.1</title>
+    <title>Star Stream - v3.2.2</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -65,7 +65,7 @@
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
-        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
+        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle, scopeCtx;
         let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, shakeTime = 0;
@@ -106,15 +106,69 @@
             scopeRenderer = new THREE.WebGLRenderer({ canvas: scopeCanvas, antialias: true });
             scopeRenderer.setSize(180, 180);
             scopeRenderer.setClearColor(0x000000, 1.0);
+
+            // 2D context for drawing the thin crosshair on top
+            scopeCtx = scopeCanvas.getContext('2d');
+        }
+
+        function drawScopeReticle() {
+            if (!scopeCtx) return;
+            const w = scopeCanvas.width;
+            const h = scopeCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(w, h) / 2 - 4;
+
+            // Clear only the overlay we draw (we redraw every frame)
+            scopeCtx.clearRect(0, 0, w, h);
+
+            scopeCtx.save();
+            scopeCtx.strokeStyle = '#ffffff';
+            scopeCtx.lineWidth = 1;
+
+            const gap = radius * 0.20;
+            const arm = radius * 0.35;
+
+            // Right
+            scopeCtx.beginPath();
+            scopeCtx.moveTo(cx + gap, cy);
+            scopeCtx.lineTo(cx + gap + arm, cy);
+            scopeCtx.stroke();
+
+            // Left
+            scopeCtx.beginPath();
+            scopeCtx.moveTo(cx - gap, cy);
+            scopeCtx.lineTo(cx - gap - arm, cy);
+            scopeCtx.stroke();
+
+            // Top
+            scopeCtx.beginPath();
+            scopeCtx.moveTo(cx, cy - gap);
+            scopeCtx.lineTo(cx, cy - gap - arm);
+            scopeCtx.stroke();
+
+            // Bottom
+            scopeCtx.beginPath();
+            scopeCtx.moveTo(cx, cy + gap);
+            scopeCtx.lineTo(cx, cy + gap + arm);
+            scopeCtx.stroke();
+
+            // Center dot
+            scopeCtx.beginPath();
+            scopeCtx.arc(cx, cy, radius * 0.03, 0, Math.PI * 2);
+            scopeCtx.fillStyle = '#ffffff';
+            scopeCtx.fill();
+
+            scopeCtx.restore();
         }
 
         function createExplosion(position) {
             shakeTime = 15;
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
                 const shard = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),  // Larger: 4-12 instead of 2-8
+                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),
                     new THREE.MeshBasicMaterial({ 
-                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),  // Brighter (0.6 instead of 0.5)
+                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),
                         transparent: true, 
                         opacity: 1 
                     })
@@ -152,6 +206,10 @@
                 scopeCamera.quaternion.copy(ship.quaternion);
                 scopeCamera.rotateY(Math.PI);
                 scopeRenderer.render(scene, scopeCamera);
+
+                // Draw 2D reticle overlay
+                drawScopeReticle();
+
                 scopeCanvas.style.display = 'block'; scopeReticle.style.display = 'block';
             } else {
                 scopeCanvas.style.display = 'none'; scopeReticle.style.display = 'none';
@@ -164,42 +222,33 @@
                 phoneZero = { beta: e.beta, gamma: e.gamma };
                 
                 // NEW: Detect orientation mode based on beta angle
-                // When sitting (screen facing sky): beta is typically -30 to +60 degrees
-                // When lying down (screen facing ground/face): beta is typically 120 to 180 or -120 to -180
                 const absBeta = Math.abs(e.beta);
                 
                 if (absBeta > 90) {
-                    // Screen is facing downward (lying in bed looking up at phone)
                     orientationMode = 'facedown';
-                    pitchMultiplier = 1;   // Keep pitch normal (left/right tilt works fine)
-                    yawMultiplier = -1;    // Invert yaw only (nose up/down needs inverting)
+                    pitchMultiplier = 1;
+                    yawMultiplier = -1;
                 } else {
-                    // Screen is facing upward (sitting, phone pointing at sky)
                     orientationMode = 'upright';
-                    pitchMultiplier = 1;   // Normal controls
-                    yawMultiplier = 1;     // Normal controls
+                    pitchMultiplier = 1;
+                    yawMultiplier = 1;
                 }
                 
                 isInitialized = true; 
                 return; 
             }
             
-            // Calculate differences from zero position (UNCHANGED)
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             
-            // Handle wraparound (UNCHANGED)
             if (yDiff > 180) yDiff -= 360; 
             if (yDiff < -180) yDiff += 360;
             
-            // Apply curve to raw differences (UNCHANGED)
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 return Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             };
             
-            // NEW: Apply orientation multipliers to the curved values
-            // This ensures controls feel natural in both positions
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY) * pitchMultiplier;
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
@@ -301,8 +350,8 @@
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 35) {
-                        // RESTORED DISTANCE BONUS
+                    // Hit radius tightened from 35 to 28 (~20% stricter)
+                    if (b.position.distanceTo(t.position) < 28) {
                         const travelDist = b.position.distanceTo(b.userData.origin);
                         const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
                         score += (10 + distanceBonus);
