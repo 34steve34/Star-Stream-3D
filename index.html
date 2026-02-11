@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.2.3</title>
+    <title>Star Stream - v3.2.4</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.2.3</div>
+    <div id="version">v3.2.4</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -410,6 +410,14 @@
 
         document.getElementById('startBtn').addEventListener('click', async function() {
             this.style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
+            
+            // Lock screen to landscape mode
+            if (screen.orientation && screen.orientation.lock) {
+                try {
+                    await screen.orientation.lock('landscape').catch(() => {});
+                } catch(e) {}
+            }
+            
             await requestIOSPermission();
             gameActive = true; init();
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
