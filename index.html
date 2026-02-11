@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.1.0</title>
+    <title>Star Stream - v3.1.1</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.1.0</div>
+    <div id="version">v3.1.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -195,7 +195,6 @@
             handleBullets(); renderer.render(scene, camera);
         }
 
-        // Rest of support functions (handleBullets, spawnWave, indicators, stars) restored to full length
         function handleStarWrap() {
             starFields.forEach(field => {
                 const diff = new THREE.Vector3().subVectors(field.position, ship.position);
@@ -261,7 +260,12 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 35) {
-                        score += 10; createExplosion(t.position);
+                        // RESTORED DISTANCE BONUS
+                        const travelDist = b.position.distanceTo(b.userData.origin);
+                        const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
+                        score += (10 + distanceBonus);
+                        
+                        createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
                         if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
                         updateHUD();
@@ -276,7 +280,11 @@
             const p = new THREE.Group();
             p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
             p.position.copy(ship.position);
-            p.userData = { velocity: new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize().multiplyScalar(CONFIG.BULLET_SPEED), spawn: Date.now() };
+            p.userData = { 
+                velocity: new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize().multiplyScalar(CONFIG.BULLET_SPEED), 
+                origin: ship.position.clone(),
+                spawn: Date.now() 
+            };
             scene.add(p); bullets.push(p);
         }
 
