@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.2.0</title>
+    <title>Star Stream - v3.2.1</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.2.0</div>
+    <div id="version">v3.2.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -112,8 +112,12 @@
             shakeTime = 15;
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
                 const shard = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(Math.random() * 6 + 2),
-                    new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(Math.random(), 1, 0.5), transparent: true, opacity: 1 })
+                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),  // Larger: 4-12 instead of 2-8
+                    new THREE.MeshBasicMaterial({ 
+                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),  // Brighter (0.6 instead of 0.5)
+                        transparent: true, 
+                        opacity: 1 
+                    })
                 );
                 shard.position.copy(position);
                 shard.userData = { velocity: new THREE.Vector3((Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*15), life: 1.0 };
@@ -167,8 +171,8 @@
                 if (absBeta > 90) {
                     // Screen is facing downward (lying in bed looking up at phone)
                     orientationMode = 'facedown';
-                    pitchMultiplier = -1;  // Invert pitch (left/right tilt)
-                    yawMultiplier = -1;    // Invert yaw (forward/back tilt)
+                    pitchMultiplier = 1;   // Keep pitch normal (left/right tilt works fine)
+                    yawMultiplier = -1;    // Invert yaw only (nose up/down needs inverting)
                 } else {
                     // Screen is facing upward (sitting, phone pointing at sky)
                     orientationMode = 'upright';
