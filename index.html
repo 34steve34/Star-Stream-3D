@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.2.2</title>
+    <title>Star Stream - v3.2.3</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
@@ -19,6 +19,10 @@
             border-radius: 50%; z-index: 15; display: none;
             box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); background: #000;
         }
+        #scopeCrosshair {
+            position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+            width: 180px; height: 180px; z-index: 17; display: none; pointer-events: none;
+        }
         #scopeReticle {
             position: absolute; bottom: 210px; left: 50%; transform: translate(-50%, -50%);
             width: 6px; height: 6px; background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%);
@@ -29,7 +33,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.2.2</div>
+    <div id="version">v3.2.3</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -40,6 +44,7 @@
     <div id="ui"><button id="startBtn">START MISSION</button></div>
     <div id="indicator-container"></div>
     <canvas id="scopeCanvas"></canvas>
+    <canvas id="scopeCrosshair" width="180" height="180"></canvas>
     <div id="scopeReticle"></div>
 
     <script type="importmap">
@@ -72,8 +77,8 @@
         let velocityVec = new THREE.Vector3(0, 0, 0);
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         
-        // NEW: Orientation detection variables
-        let orientationMode = 'upright'; // 'upright' (sitting) or 'facedown' (lying in bed)
+        // Orientation detection for lying down vs sitting
+        let orientationMode = 'upright';
         let pitchMultiplier = 1;
         let yawMultiplier = 1;
 
@@ -107,68 +112,52 @@
             scopeRenderer.setSize(180, 180);
             scopeRenderer.setClearColor(0x000000, 1.0);
             
-            // Draw professional crosshair overlay on canvas
-            drawScopeCrosshair();
-        }
-        
-        function drawScopeCrosshair() {
-            const canvas = scopeCanvas;
-            const ctx = canvas.getContext('2d');
-            const centerX = 90;  // Half of 180px
-            const centerY = 90;
-            const lineLength = 45;  // Professional length
-            const gap = 6;  // Small center gap
+            // Setup separate 2D crosshair canvas
+            const crosshairCanvas = document.getElementById('scopeCrosshair');
+            const ctx = crosshairCanvas.getContext('2d');
+            const centerX = 90, centerY = 90, lineLength = 45, gap = 6;
             
-            // Professional thin red lines like the reference
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)';  // Red lines
-            ctx.lineWidth = 1.2;  // Thin professional lines
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)';
+            ctx.lineWidth = 1.2;
             ctx.lineCap = 'butt';
             
-            ctx.save();
-            
-            // Vertical line (top)
+            // Vertical top
             ctx.beginPath();
             ctx.moveTo(centerX, centerY - gap);
             ctx.lineTo(centerX, centerY - gap - lineLength);
             ctx.stroke();
             
-            // Vertical line (bottom)
+            // Vertical bottom
             ctx.beginPath();
             ctx.moveTo(centerX, centerY + gap);
             ctx.lineTo(centerX, centerY + gap + lineLength);
             ctx.stroke();
             
-            // Horizontal line (left)
+            // Horizontal left
             ctx.beginPath();
             ctx.moveTo(centerX - gap, centerY);
             ctx.lineTo(centerX - gap - lineLength, centerY);
             ctx.stroke();
             
-            // Horizontal line (right)
+            // Horizontal right
             ctx.beginPath();
             ctx.moveTo(centerX + gap, centerY);
             ctx.lineTo(centerX + gap + lineLength, centerY);
             ctx.stroke();
             
-            // Center dot - small and precise
+            // Center dot
             ctx.fillStyle = 'rgba(255, 0, 0, 0.95)';
             ctx.beginPath();
             ctx.arc(centerX, centerY, 1.2, 0, Math.PI * 2);
             ctx.fill();
-            
-            ctx.restore();
         }
 
         function createExplosion(position) {
             shakeTime = 15;
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
                 const shard = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),  // Larger: 4-12 instead of 2-8
-                    new THREE.MeshBasicMaterial({ 
-                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),  // Brighter (0.6 instead of 0.5)
-                        transparent: true, 
-                        opacity: 1 
-                    })
+                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),
+                    new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(Math.random(), 1, 0.6), transparent: true, opacity: 1 })
                 );
                 shard.position.copy(position);
                 shard.userData = { velocity: new THREE.Vector3((Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*15), life: 1.0 };
@@ -203,61 +192,45 @@
                 scopeCamera.quaternion.copy(ship.quaternion);
                 scopeCamera.rotateY(Math.PI);
                 scopeRenderer.render(scene, scopeCamera);
-                drawScopeCrosshair();  // Draw crosshairs AFTER rendering 3D scene
-                scopeCanvas.style.display = 'block'; scopeReticle.style.display = 'none';  // Hide old reticle, use canvas crosshairs
+                scopeCanvas.style.display = 'block';
+                document.getElementById('scopeCrosshair').style.display = 'block';
+                scopeReticle.style.display = 'none';
             } else {
-                scopeCanvas.style.display = 'none'; scopeReticle.style.display = 'none';
+                scopeCanvas.style.display = 'none';
+                document.getElementById('scopeCrosshair').style.display = 'none';
+                scopeReticle.style.display = 'none';
             }
         }
 
         function onDeviceMove(e) {
-            // Safety check: ensure we have valid orientation data
-            if (e.beta === null || e.gamma === null || 
-                typeof e.beta === 'undefined' || typeof e.gamma === 'undefined') {
-                return;  // Skip this frame if data is invalid
-            }
-            
             if (!isInitialized) { 
-                // Store zero position
                 phoneZero = { beta: e.beta, gamma: e.gamma };
                 
-                // NEW: Detect orientation mode based on beta angle
-                // When sitting (screen facing sky): beta is typically -30 to +60 degrees
-                // When lying down (screen facing ground/face): beta is typically 120 to 180 or -120 to -180
+                // Detect orientation mode based on beta angle
                 const absBeta = Math.abs(e.beta);
                 
                 if (absBeta > 90) {
-                    // Screen is facing downward (lying in bed looking up at phone)
+                    // Screen facing downward (lying in bed)
                     orientationMode = 'facedown';
-                    pitchMultiplier = 1;   // Keep pitch normal (left/right tilt works fine)
-                    yawMultiplier = -1;    // Invert yaw only (nose up/down needs inverting)
+                    pitchMultiplier = 1;   // Keep pitch normal
+                    yawMultiplier = -1;    // Invert yaw only
                 } else {
-                    // Screen is facing upward (sitting, phone pointing at sky)
+                    // Screen facing upward (sitting)
                     orientationMode = 'upright';
-                    pitchMultiplier = 1;   // Normal controls
-                    yawMultiplier = 1;     // Normal controls
+                    pitchMultiplier = 1;
+                    yawMultiplier = 1;
                 }
                 
                 isInitialized = true; 
                 return; 
             }
-            
-            // Calculate differences from zero position (UNCHANGED)
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
-            
-            // Handle wraparound (UNCHANGED)
-            if (yDiff > 180) yDiff -= 360; 
-            if (yDiff < -180) yDiff += 360;
-            
-            // Apply curve to raw differences (UNCHANGED)
+            if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 return Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             };
-            
-            // NEW: Apply orientation multipliers to the curved values
-            // This ensures controls feel natural in both positions
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY) * pitchMultiplier;
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
@@ -359,7 +332,7 @@
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 22) {  // Tightened to 22 (20% tighter than before)
+                    if (b.position.distanceTo(t.position) < 28) {
                         // RESTORED DISTANCE BONUS
                         const travelDist = b.position.distanceTo(b.userData.origin);
                         const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
@@ -418,20 +391,9 @@
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const response = await DeviceOrientationEvent.requestPermission();
-                    if (response === 'granted') {
-                        window.addEventListener('deviceorientation', onDeviceMove);
-                        console.log('iOS motion permission granted');
-                    } else {
-                        console.warn('iOS motion permission denied');
-                        alert('Motion sensors denied. Please enable in Settings > Safari > Motion & Orientation Access');
-                    }
-                } catch (e) { 
-                    console.error('iOS permission error:', e);
-                    // Fallback: try adding listener anyway (might work on some iOS versions)
-                    window.addEventListener('deviceorientation', onDeviceMove);
-                }
+                    if (response === 'granted') window.addEventListener('deviceorientation', onDeviceMove);
+                } catch (e) { console.error(e); }
             } else {
-                // Android or desktop - just add listener
                 window.addEventListener('deviceorientation', onDeviceMove);
             }
         }
