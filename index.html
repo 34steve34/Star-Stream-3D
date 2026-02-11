@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.2.1</div>
+    <div id="version">v3.2.2</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -65,7 +65,7 @@
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
-        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle, scopeCtx;
+        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
         let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, shakeTime = 0;
@@ -106,69 +106,66 @@
             scopeRenderer = new THREE.WebGLRenderer({ canvas: scopeCanvas, antialias: true });
             scopeRenderer.setSize(180, 180);
             scopeRenderer.setClearColor(0x000000, 1.0);
-
-            // 2D context for drawing the thin crosshair on top
-            scopeCtx = scopeCanvas.getContext('2d');
+            
+            // Draw professional crosshair overlay on canvas
+            drawScopeCrosshair();
         }
-
-        function drawScopeReticle() {
-            if (!scopeCtx) return;
-            const w = scopeCanvas.width;
-            const h = scopeCanvas.height;
-            const cx = w / 2;
-            const cy = h / 2;
-            const radius = Math.min(w, h) / 2 - 4;
-
-            // Clear only the overlay we draw (we redraw every frame)
-            scopeCtx.clearRect(0, 0, w, h);
-
-            scopeCtx.save();
-            scopeCtx.strokeStyle = '#ffffff';
-            scopeCtx.lineWidth = 1;
-
-            const gap = radius * 0.20;
-            const arm = radius * 0.35;
-
-            // Right
-            scopeCtx.beginPath();
-            scopeCtx.moveTo(cx + gap, cy);
-            scopeCtx.lineTo(cx + gap + arm, cy);
-            scopeCtx.stroke();
-
-            // Left
-            scopeCtx.beginPath();
-            scopeCtx.moveTo(cx - gap, cy);
-            scopeCtx.lineTo(cx - gap - arm, cy);
-            scopeCtx.stroke();
-
-            // Top
-            scopeCtx.beginPath();
-            scopeCtx.moveTo(cx, cy - gap);
-            scopeCtx.lineTo(cx, cy - gap - arm);
-            scopeCtx.stroke();
-
-            // Bottom
-            scopeCtx.beginPath();
-            scopeCtx.moveTo(cx, cy + gap);
-            scopeCtx.lineTo(cx, cy + gap + arm);
-            scopeCtx.stroke();
-
-            // Center dot
-            scopeCtx.beginPath();
-            scopeCtx.arc(cx, cy, radius * 0.03, 0, Math.PI * 2);
-            scopeCtx.fillStyle = '#ffffff';
-            scopeCtx.fill();
-
-            scopeCtx.restore();
+        
+        function drawScopeCrosshair() {
+            const canvas = scopeCanvas;
+            const ctx = canvas.getContext('2d');
+            const centerX = 90;  // Half of 180px
+            const centerY = 90;
+            const lineLength = 45;  // Professional length
+            const gap = 6;  // Small center gap
+            
+            // Professional thin red lines like the reference
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)';  // Red lines
+            ctx.lineWidth = 1.2;  // Thin professional lines
+            ctx.lineCap = 'butt';
+            
+            ctx.save();
+            
+            // Vertical line (top)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - gap);
+            ctx.lineTo(centerX, centerY - gap - lineLength);
+            ctx.stroke();
+            
+            // Vertical line (bottom)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY + gap);
+            ctx.lineTo(centerX, centerY + gap + lineLength);
+            ctx.stroke();
+            
+            // Horizontal line (left)
+            ctx.beginPath();
+            ctx.moveTo(centerX - gap, centerY);
+            ctx.lineTo(centerX - gap - lineLength, centerY);
+            ctx.stroke();
+            
+            // Horizontal line (right)
+            ctx.beginPath();
+            ctx.moveTo(centerX + gap, centerY);
+            ctx.lineTo(centerX + gap + lineLength, centerY);
+            ctx.stroke();
+            
+            // Center dot - small and precise
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.95)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
         }
 
         function createExplosion(position) {
             shakeTime = 15;
             for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
                 const shard = new THREE.Mesh(
-                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),
+                    new THREE.TetrahedronGeometry(Math.random() * 8 + 4),  // Larger: 4-12 instead of 2-8
                     new THREE.MeshBasicMaterial({ 
-                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),
+                        color: new THREE.Color().setHSL(Math.random(), 1, 0.6),  // Brighter (0.6 instead of 0.5)
                         transparent: true, 
                         opacity: 1 
                     })
@@ -206,49 +203,61 @@
                 scopeCamera.quaternion.copy(ship.quaternion);
                 scopeCamera.rotateY(Math.PI);
                 scopeRenderer.render(scene, scopeCamera);
-
-                // Draw 2D reticle overlay
-                drawScopeReticle();
-
-                scopeCanvas.style.display = 'block'; scopeReticle.style.display = 'block';
+                drawScopeCrosshair();  // Draw crosshairs AFTER rendering 3D scene
+                scopeCanvas.style.display = 'block'; scopeReticle.style.display = 'none';  // Hide old reticle, use canvas crosshairs
             } else {
                 scopeCanvas.style.display = 'none'; scopeReticle.style.display = 'none';
             }
         }
 
         function onDeviceMove(e) {
+            // Safety check: ensure we have valid orientation data
+            if (e.beta === null || e.gamma === null || 
+                typeof e.beta === 'undefined' || typeof e.gamma === 'undefined') {
+                return;  // Skip this frame if data is invalid
+            }
+            
             if (!isInitialized) { 
                 // Store zero position
                 phoneZero = { beta: e.beta, gamma: e.gamma };
                 
                 // NEW: Detect orientation mode based on beta angle
+                // When sitting (screen facing sky): beta is typically -30 to +60 degrees
+                // When lying down (screen facing ground/face): beta is typically 120 to 180 or -120 to -180
                 const absBeta = Math.abs(e.beta);
                 
                 if (absBeta > 90) {
+                    // Screen is facing downward (lying in bed looking up at phone)
                     orientationMode = 'facedown';
-                    pitchMultiplier = 1;
-                    yawMultiplier = -1;
+                    pitchMultiplier = 1;   // Keep pitch normal (left/right tilt works fine)
+                    yawMultiplier = -1;    // Invert yaw only (nose up/down needs inverting)
                 } else {
+                    // Screen is facing upward (sitting, phone pointing at sky)
                     orientationMode = 'upright';
-                    pitchMultiplier = 1;
-                    yawMultiplier = 1;
+                    pitchMultiplier = 1;   // Normal controls
+                    yawMultiplier = 1;     // Normal controls
                 }
                 
                 isInitialized = true; 
                 return; 
             }
             
+            // Calculate differences from zero position (UNCHANGED)
             let pDiff = e.gamma - phoneZero.gamma;
             let yDiff = e.beta - phoneZero.beta;
             
+            // Handle wraparound (UNCHANGED)
             if (yDiff > 180) yDiff -= 360; 
             if (yDiff < -180) yDiff += 360;
             
+            // Apply curve to raw differences (UNCHANGED)
             const applyCurve = (val, sens) => {
                 if (Math.abs(val) < CONFIG.DEADZONE) return 0;
                 return Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             };
             
+            // NEW: Apply orientation multipliers to the curved values
+            // This ensures controls feel natural in both positions
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY) * pitchMultiplier;
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
@@ -350,8 +359,8 @@
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
-                    // Hit radius tightened from 35 to 28 (~20% stricter)
-                    if (b.position.distanceTo(t.position) < 28) {
+                    if (b.position.distanceTo(t.position) < 22) {  // Tightened to 22 (20% tighter than before)
+                        // RESTORED DISTANCE BONUS
                         const travelDist = b.position.distanceTo(b.userData.origin);
                         const distanceBonus = Math.floor(Math.pow(travelDist, 1.2) / 50);
                         score += (10 + distanceBonus);
@@ -409,9 +418,20 @@
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const response = await DeviceOrientationEvent.requestPermission();
-                    if (response === 'granted') window.addEventListener('deviceorientation', onDeviceMove);
-                } catch (e) { console.error(e); }
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', onDeviceMove);
+                        console.log('iOS motion permission granted');
+                    } else {
+                        console.warn('iOS motion permission denied');
+                        alert('Motion sensors denied. Please enable in Settings > Safari > Motion & Orientation Access');
+                    }
+                } catch (e) { 
+                    console.error('iOS permission error:', e);
+                    // Fallback: try adding listener anyway (might work on some iOS versions)
+                    window.addEventListener('deviceorientation', onDeviceMove);
+                }
             } else {
+                // Android or desktop - just add listener
                 window.addEventListener('deviceorientation', onDeviceMove);
             }
         }
