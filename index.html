@@ -245,38 +245,56 @@
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            if (ship && isInitialized && gameActive) {
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
-                ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+       function animate(currentTime) {
+    requestAnimationFrame(animate);
+    if (ship && isInitialized && gameActive) {
+        const dt = clock.getDelta();
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+        ship.rotateOnWorldAxis(camUp, -currentRotationVel.y * 60 * dt);
+        ship.rotateOnWorldAxis(camRight, -currentRotationVel.p * 60 * dt);
 
-                if (isThrusting) {
-                    const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
-                    velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
-                    if(velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
-                    engineBeam.scale.set(1, 1.2 + Math.random()*0.8, 1);
-                    engineLight.intensity = 3000; if(Math.random() > 0.4) spawnTrail();
-                } else {
-                    velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
-                    engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
-                }
-                ship.position.add(velocityVec);
-                camera.fov = THREE.MathUtils.lerp(camera.fov, CONFIG.BASE_FOV + (velocityVec.length()/CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST), 0.03);
-                camera.updateProjectionMatrix();
-
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
-                
-                const dist = ship.position.distanceTo(camera.position);
-                if (dist > CONFIG.CAMERA_RADIUS) camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
-                camera.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion))), 0.08);
-
-                if (shakeTime > 0) { camera.position.x += (Math.random()-0.5)*CONFIG.SHAKE_INTENSITY; camera.position.y += (Math.random()-0.5)*CONFIG.SHAKE_INTENSITY; shakeTime--; }
-            }
-            handleBullets(); renderer.render(scene, camera);
+        if (isThrusting) {
+            const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
+            const accel = CONFIG.ACCEL_FORCE * 60 * dt;
+            velocityVec.add(dir.multiplyScalar(accel));
+            const maxVel = CONFIG.MAX_VELOCITY * 60;
+            if(velocityVec.length() > maxVel) velocityVec.setLength(maxVel);
+            engineBeam.scale.set(1, 1.2 + Math.random()*0.8, 1);
+            engineLight.intensity = 3000; 
+            if (Math.random() < 24 * dt) spawnTrail();  // Fixed spawn rate ~24/sec
+        } else {
+            const drift = Math.pow(CONFIG.DRIFT_INERTIA, 60 * dt);
+            velocityVec.multiplyScalar(drift);
+            engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
         }
+        ship.position.add(velocityVec.clone().multiplyScalar(dt));
+        const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / (CONFIG.MAX_VELOCITY * 60) * CONFIG.MAX_FOV_BOOST);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING * 60 * dt);
+        camera.updateProjectionMatrix();
+
+        handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
+        
+        const dist = ship.position.distanceTo(camera.position);
+        if (dist > CONFIG.CAMERA_RADIUS) {
+            const pullSpeed = 0.02 * 60 * dt;
+            camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * pullSpeed));
+        }
+        const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
+        camera.quaternion.slerp(targetQuat, 0.08 * 60 * dt);
+
+        if (shakeDuration > 0) {
+            const intensityScale = Math.max(0, shakeDuration / 0.25);
+            const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * intensityScale;
+            camera.position.x += offset;
+            camera.position.y += offset;
+            shakeDuration -= dt;
+            if (shakeDuration < 0) shakeDuration = 0;
+        }
+    }
+    handleBullets(); 
+    renderer.render(scene, camera);
+}
 
         function handleStarWrap() {
             starFields.forEach(field => {
