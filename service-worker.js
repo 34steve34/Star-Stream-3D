@@ -7,6 +7,7 @@ const urlsToCache = [
   './icon512.png',
   './libs/three.module.js',
   './libs/loaders/GLTFLoader.js',
+  './libs/utils/BufferGeometryUtils.js',
   './assets/ship.glb'
 ];
 
