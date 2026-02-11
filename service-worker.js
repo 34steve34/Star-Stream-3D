@@ -16,7 +16,14 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Caching app files');
-        return cache.addAll(urlsToCache);
+        // Cache files individually so one 404 doesn't break everything
+        return Promise.all(
+          urlsToCache.map(url => {
+            return cache.add(url).catch(err => {
+              console.warn('Failed to cache:', url, err.message);
+            });
+          })
+        );
       })
       .then(() => self.skipWaiting()) // Activate immediately
   );
