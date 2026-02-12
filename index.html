@@ -87,7 +87,8 @@
         let velocityVec = new THREE.Vector3(0, 0, 0);
         let clock;
 		let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
-        
+        let shakeTime = 0;
+		
         // Orientation detection for lying down vs sitting
         let orientationMode = 'upright';
         let pitchMultiplier = 1;
