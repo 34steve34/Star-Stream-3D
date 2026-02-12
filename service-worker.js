@@ -1,4 +1,5 @@
 // Star Stream PWA - VERSION 3.3.0 - 2026-02-11
+// added moving targets
 // Force update trigger → FIXED: Removed all delta time, back to frame-locked
 
 const CACHE_NAME = 'star-stream-v3.3.0';
@@ -80,4 +81,5 @@ self.addEventListener('fetch', event => {
         });
       })
   );
+
 });
