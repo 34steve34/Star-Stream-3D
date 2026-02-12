@@ -1,5 +1,5 @@
 // Star Stream PWA - VERSION 3.3.0 - 2026-02-11
-// added target motion very slow
+// added target motion orbitSpeed = (Math.random() * 0.0003) + 0.00015
 // Force update trigger → FIXED: Removed all delta time, back to frame-locked
 
 const CACHE_NAME = 'star-stream-v3.3.0';
