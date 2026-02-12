@@ -85,7 +85,8 @@
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, shakeTime = 0;
         let velocityVec = new THREE.Vector3(0, 0, 0);
-        let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
+        let clock;
+		let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         
         // Orientation detection for lying down vs sitting
         let orientationMode = 'upright';
@@ -100,7 +101,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
-            
+            clock = new THREE.Clock();
+			
             scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(10, 20, 10);
@@ -247,6 +249,11 @@
 
        function animate(currentTime) {
     requestAnimationFrame(animate);
+	let dt = 1 / 60;           // safe default if clock missing
+    if (clock) {
+        dt = clock.getDelta();
+    }
+
     if (ship && isInitialized && gameActive) {
         const dt = clock.getDelta();
         const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
