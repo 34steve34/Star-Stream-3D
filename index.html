@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.5.0</title>
+    <title>Star Stream 3D - v3.6.0</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -17,7 +17,7 @@
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
-        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
+		#zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
         #version { position: absolute; top: 10px; right: 10px; color: rgba(255, 120, 0, 0.7); font-size: 10px; z-index: 30; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 104px; height: 104px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; -webkit-user-select: none; }
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.5.0</div>
+    <div id="version">v3.6.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -56,6 +56,9 @@
     <canvas id="scopeCanvas"></canvas>
     <canvas id="scopeCrosshair" width="180" height="180"></canvas>
     <div id="scopeReticle"></div>
+	<div id="debug" style="position:absolute; top:80px; left:20px; color:#ff00ff; font-family:monospace; font-size:14px; pointer-events:none; z-index:100; text-shadow: 1px 1px 2px #000;">
+    KICK X: 0.00 | Y: 0.00 | Z: 0.00
+	</div>
 
     <script type="importmap">
         {
@@ -381,6 +384,11 @@ function fireLaser() {
     // 3. Calculate Rotational Kick (The Change in Orientation)
     // We find the difference between current and previous frame rotations
     const deltaRotation = ship.quaternion.clone().multiply(prevQuaternion.clone().invert());
+	
+	const debugEl = document.getElementById('debug');
+if (debugEl) {
+    debugEl.innerText = `KICK X: ${rotationalKick.x.toFixed(3)} | Y: ${rotationalKick.y.toFixed(3)} | Z: ${rotationalKick.z.toFixed(3)}`;
+}
     
     // We apply that rotation difference to our tip position 
     // to see where the tip "would have been" if it kept moving
