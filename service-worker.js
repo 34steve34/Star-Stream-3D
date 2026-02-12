@@ -1,7 +1,7 @@
-// Star Stream 3D PWA - VERSION 3.2.5 - 2026-02-11
-// Force update trigger ↑ change this line every deploy
+// Star Stream PWA - VERSION 3.2.5 - 2026-02-11
+// Force update trigger → change this line every deploy
 
-const CACHE_NAME = 'star-stream-v3.2.4';
+const CACHE_NAME = 'star-stream-v3.2.5';
 const urlsToCache = [
   './',
   './index.html',
@@ -80,5 +80,4 @@ self.addEventListener('fetch', event => {
         });
       })
   );
-
 });

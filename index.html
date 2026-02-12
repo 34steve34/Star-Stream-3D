@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream - v3.2.4</title>
+    <title>Star Stream - v3.2.5</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.2.4</div>
+    <div id="version">v3.2.5</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -103,7 +103,8 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
 
-            clock = new THREE.Clock();  // ← required for delta time
+            clock = new THREE.Clock();
+            clock.start(); // ← CRITICAL FIX: Start the clock!
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -157,11 +158,11 @@
             }
         }
 
-        function updateExplosions() {
+        function updateExplosions(dt) {
             for (let i = explosions.length - 1; i >= 0; i--) {
                 const s = explosions[i];
-                s.position.add(s.userData.velocity);
-                s.userData.life -= 0.02;
+                s.position.add(s.userData.velocity.clone().multiplyScalar(dt));
+                s.userData.life -= 1.2 * dt; // Decay rate adjusted for dt
                 s.material.opacity = s.userData.life;
                 if (s.userData.life <= 0) { scene.remove(s); explosions.splice(i, 1); }
             }
@@ -223,12 +224,14 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            let dt = 1 / 60;
-            if (clock) dt = clock.getDelta();
+            // Get delta time - defaults to 60fps if something goes wrong
+            const dt = Math.min(clock.getDelta(), 0.1); // Cap at 100ms to prevent huge jumps
 
             if (ship && isInitialized && gameActive) {
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                
+                // Rotation - multiply by 60 because the original code expected 60fps
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y * 60 * dt);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p * 60 * dt);
 
@@ -252,7 +255,7 @@
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING * 60 * dt);
                 camera.updateProjectionMatrix();
 
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
+                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions(dt);
                 
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -271,7 +274,7 @@
                     if (shakeDuration < 0) shakeDuration = 0;
                 }
             }
-            handleBullets(); 
+            handleBullets(dt); 
             renderer.render(scene, camera);
         }
 
@@ -335,9 +338,9 @@
             });
         }
 
-        function handleBullets() {
+        function handleBullets(dt) {
             bullets.forEach((b, bi) => {
-                b.position.add(b.userData.velocity);
+                b.position.add(b.userData.velocity.clone().multiplyScalar(dt));
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 28) {
                         const travelDist = b.position.distanceTo(b.userData.origin);
@@ -437,7 +440,7 @@
                     .catch(error => console.log('⚠ Service Worker error:', error.message));
             });
         }
-        console.log('Star Stream v3.2.4 - Page loaded');
+        console.log('Star Stream v3.2.5 - Page loaded');
     </script>
 </body>
 </html>
