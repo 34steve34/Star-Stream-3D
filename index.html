@@ -71,7 +71,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const CONFIG = {
-            SPEED_MULTIPLIER: 250.0, // ← TUNE THIS if game is too fast/slow
+            SPEED_MULTIPLIER: 1.0, // ← TUNE THIS if game is too fast/slow
             MAX_VELOCITY: 1.5, DRIFT_INERTIA: 0.95, ACCEL_FORCE: 0.08, BULLET_SPEED: 9,
             PITCH_SENSITIVITY: 0.035, YAW_SENSITIVITY: 0.03, EXPONENT: 1.6, DEADZONE: 1.2,
             SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 800,
@@ -87,7 +87,6 @@
         let isInitialized = false, isThrusting = false, gameActive = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
-        let clock;
         let shakeDuration = 0;
 
         // Orientation detection for lying down vs sitting
@@ -103,9 +102,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
-
-            clock = new THREE.Clock();
-            clock.start(); // ← CRITICAL FIX: Start the clock!
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -159,7 +155,7 @@
             }
         }
 
-        function updateExplosions(dt) {
+        function updateExplosions() {
             for (let i = explosions.length - 1; i >= 0; i--) {
                 const s = explosions[i];
                 s.position.add(s.userData.velocity.clone().multiplyScalar(CONFIG.SPEED_MULTIPLIER));
@@ -225,9 +221,6 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Get delta time - defaults to 60fps if something goes wrong
-            const dt = Math.min(clock.getDelta(), 0.1); // Cap at 100ms to prevent huge jumps
-
             if (ship && isInitialized && gameActive) {
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
@@ -255,7 +248,7 @@
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
 
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions(dt);
+                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
                 
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -274,7 +267,7 @@
                     if (shakeDuration < 0) shakeDuration = 0;
                 }
             }
-            handleBullets(dt); 
+            handleBullets(); 
             renderer.render(scene, camera);
         }
 
@@ -338,7 +331,7 @@
             });
         }
 
-        function handleBullets(dt) {
+        function handleBullets() {
             bullets.forEach((b, bi) => {
                 b.position.add(b.userData.velocity.clone().multiplyScalar(CONFIG.SPEED_MULTIPLIER));
                 targets.forEach((t, ti) => {
