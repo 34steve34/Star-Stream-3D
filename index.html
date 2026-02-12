@@ -71,7 +71,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const CONFIG = {
-            SPEED_MULTIPLIER: 25.0, // ← TUNE THIS to adjust overall game speed
+            SPEED_MULTIPLIER: 1.0, // ← TUNE THIS if game is too fast/slow
             MAX_VELOCITY: 1.5, DRIFT_INERTIA: 0.95, ACCEL_FORCE: 0.08, BULLET_SPEED: 9,
             PITCH_SENSITIVITY: 0.035, YAW_SENSITIVITY: 0.03, EXPONENT: 1.6, DEADZONE: 1.2,
             SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 800,
@@ -162,8 +162,8 @@
         function updateExplosions(dt) {
             for (let i = explosions.length - 1; i >= 0; i--) {
                 const s = explosions[i];
-                s.position.add(s.userData.velocity.clone().multiplyScalar(dt * 60 * CONFIG.SPEED_MULTIPLIER)); // Scale for 60fps baseline
-                s.userData.life -= 1.2 * dt; // Decay rate adjusted for dt
+                s.position.add(s.userData.velocity.clone().multiplyScalar(CONFIG.SPEED_MULTIPLIER));
+                s.userData.life -= 0.02; // Per frame decay
                 s.material.opacity = s.userData.life;
                 if (s.userData.life <= 0) { scene.remove(s); explosions.splice(i, 1); }
             }
@@ -232,25 +232,24 @@
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 
-                // Rotation values are already per-frame rates
+                // Apply rotation directly
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
                 if (isThrusting) {
                     const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
-                    const accel = CONFIG.ACCEL_FORCE; // units per frame at 60fps
+                    const accel = CONFIG.ACCEL_FORCE;
                     velocityVec.add(dir.multiplyScalar(accel));
                     const maxVel = CONFIG.MAX_VELOCITY;
                     if(velocityVec.length() > maxVel) velocityVec.setLength(maxVel);
                     engineBeam.scale.set(1, 1.2 + Math.random()*0.8, 1);
                     engineLight.intensity = 3000; 
-                    if (Math.random() < 24 * dt) spawnTrail();
+                    if (Math.random() < 0.4) spawnTrail(); // ~40% chance per frame
                 } else {
-                    const drift = Math.pow(CONFIG.DRIFT_INERTIA, 1); // per frame
-                    velocityVec.multiplyScalar(drift);
+                    velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
                     engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
                 }
-                ship.position.add(velocityVec.clone().multiplyScalar(60 * dt * CONFIG.SPEED_MULTIPLIER)); // velocityVec is per-frame, convert to per-second then scale by dt
+                ship.position.add(velocityVec.clone().multiplyScalar(CONFIG.SPEED_MULTIPLIER));
 
                 const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
@@ -271,7 +270,7 @@
                     const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * intensityScale;
                     camera.position.x += offset;
                     camera.position.y += offset;
-                    shakeDuration -= dt;
+                    shakeDuration -= 0.016; // Approximately per-frame at 60fps
                     if (shakeDuration < 0) shakeDuration = 0;
                 }
             }
@@ -341,7 +340,7 @@
 
         function handleBullets(dt) {
             bullets.forEach((b, bi) => {
-                b.position.add(b.userData.velocity.clone().multiplyScalar(dt * 60 * CONFIG.SPEED_MULTIPLIER)); // Scale for 60fps baseline
+                b.position.add(b.userData.velocity.clone().multiplyScalar(CONFIG.SPEED_MULTIPLIER));
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 28) {
                         const travelDist = b.position.distanceTo(b.userData.origin);
