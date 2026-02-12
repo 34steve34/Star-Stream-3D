@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.3.0</div>
+    <div id="version">v3.3.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -389,7 +389,7 @@ targets.forEach(t => {
         
         // Target DNA
         const orbitRadius = 300 + Math.random() * 1100;
-        const orbitSpeed = (Math.random() * 0.009) + 0.0045;
+        const orbitSpeed = (Math.random() * 0.0009) + 0.00045;
         const orbitAngle = Math.random() * Math.PI * 2;
         const randomAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
         
