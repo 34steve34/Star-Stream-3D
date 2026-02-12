@@ -1,7 +1,7 @@
-// Star Stream PWA - VERSION 3.2.5 - 2026-02-11
-// Force update trigger → change this line every deploy
+// Star Stream PWA - VERSION 3.3.0 - 2026-02-11
+// Force update trigger → FIXED: Removed all delta time, back to frame-locked
 
-const CACHE_NAME = 'star-stream-v3.2.5';
+const CACHE_NAME = 'star-stream-v3.3.0';
 const urlsToCache = [
   './',
   './index.html',
