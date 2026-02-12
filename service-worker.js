@@ -1,11 +1,11 @@
-// Star Stream PWA - VERSION 3.6.1 - 2026-02-11
+// Star Stream PWA - VERSION 3.6.2 - 2026-02-12
 // added target motion orbitSpeed = (Math.random() * 0.001) + 0.00065;
 // 3.5.0 added ship velocity to bullet (bullet drifts with ship and rotation of ship
 // 3.6.0 add debug code for rotational KICK OF bullet
 // bigger stars THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent:
 // Force update trigger → FIXED: Removed all delta time, back to frame-locked
 
-const CACHE_NAME = 'star-stream-3D-v3.6.1';
+const CACHE_NAME = 'star-stream-3D-v3.6.2';
 const urlsToCache = [
   './',
   './index.html',
