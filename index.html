@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.3.3</title>
+    <title>Star Stream 3D - v3.3.4</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.3.3</div>
+    <div id="version">v3.3.4</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -310,7 +310,7 @@ targets.forEach(t => {
             const pos = new Float32Array(250 * 3);
             for(let i=0; i<250*3; i++) pos[i] = (Math.random()-0.5) * CONFIG.SECTOR_SIZE;
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 8, transparent: true, opacity: 0.8 });
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true, opacity: 0.8 });
             for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) for(let z=-1; z<=1; z++) {
                 const p = new THREE.Points(geo, mat); p.position.set(x*CONFIG.SECTOR_SIZE, y*CONFIG.SECTOR_SIZE, z*CONFIG.SECTOR_SIZE);
                 scene.add(p); starFields.push(p);
@@ -389,7 +389,7 @@ targets.forEach(t => {
         
         // Target DNA
         const orbitRadius = 300 + Math.random() * 1100;
-        const orbitSpeed = (Math.random() * 0.0004) + 0.00025;
+        const orbitSpeed = (Math.random() * 0.001) + 0.00065;
         const orbitAngle = Math.random() * Math.PI * 2;
         const randomAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
         

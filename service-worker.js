@@ -1,6 +1,6 @@
-// Star Stream PWA - VERSION 3.3.3 - 2026-02-11
-// added target motion orbitSpeed = (Math.random() * 0.0004) + 0.00025
-// bigger stars THREE.PointsMaterial({ color: 0xffffff, size: 8, transparent:
+// Star Stream PWA - VERSION 3.3.4 - 2026-02-11
+// added target motion orbitSpeed = (Math.random() * 0.001) + 0.00065;
+// bigger stars THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent:
 // Force update trigger → FIXED: Removed all delta time, back to frame-locked
 
 const CACHE_NAME = 'star-stream-v3.3.3';
