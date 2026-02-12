@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.4.0</title>
+    <title>Star Stream 3D - v3.5.0</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.4.0</div>
+    <div id="version">v3.5.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -85,6 +85,7 @@
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
+		let prevQuaternion = new THREE.Quaternion();
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
 
@@ -265,6 +266,8 @@
                     shakeDuration -= 0.016; // Approximately per-frame at 60fps
                     if (shakeDuration < 0) shakeDuration = 0;
                 }
+				// Record the orientation AFTER all rotations are applied this frame
+                prevQuaternion.copy(ship.quaternion);
             }
             // Move Targets in Orbits
 targets.forEach(t => {
@@ -360,31 +363,57 @@ targets.forEach(t => {
                 });
                 if (Date.now() - b.userData.spawn > 5000) { scene.remove(b); bullets.splice(bi, 1); }
             });
-        }
-
-      
+        }  
 
 function fireLaser() {
     if (!ship || !gameActive) return;
-    const p = new THREE.Group();
-    p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
-    p.position.copy(ship.position);
-    
-    // 1. Get the direction the ship is pointing
+
+    // 1. Define the Gun Tip Position
+    const GUN_LENGTH = 15; // Distance from ship center to nose
+    const spawnPos = new THREE.Vector3(0, 0, GUN_LENGTH);
+    spawnPos.applyQuaternion(ship.quaternion);
+    spawnPos.add(ship.position);
+
+    // 2. Base Forward Velocity (The "Muzzle Velocity")
     const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-    
-    // 2. Base bullet speed (forward only)
     const bulletForwardVel = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
+
+    // 3. Calculate Rotational Kick (The Change in Orientation)
+    // We find the difference between current and previous frame rotations
+    const deltaRotation = ship.quaternion.clone().multiply(prevQuaternion.clone().invert());
     
-    // 3. INHERIT ship velocity: Add your current movement to the bullet
-    const finalVelocity = new THREE.Vector3().addVectors(bulletForwardVel, velocityVec);
+    // We apply that rotation difference to our tip position 
+    // to see where the tip "would have been" if it kept moving
+    const tipVelocity = new THREE.Vector3(0, 0, GUN_LENGTH);
+    const futureTip = tipVelocity.clone().applyQuaternion(deltaRotation);
+    
+    // The "Kick" is the difference between current tip and future tip
+    // then rotated into world space
+    const rotationalKick = futureTip.sub(tipVelocity).applyQuaternion(ship.quaternion);
+
+    // 4. Combine all forces
+    // Forward Speed + Ship's Linear Drift + The Rotational Flick
+    const finalVelocity = new THREE.Vector3()
+        .add(bulletForwardVel)
+        .add(velocityVec) 
+        .add(rotationalKick);
+
+    // 5. Spawn the Bullet
+    const p = new THREE.Group();
+    p.add(
+        new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), 
+        new THREE.PointLight(0xff00ff, 4500, 200)
+    );
+    p.position.copy(spawnPos);
 
     p.userData = { 
         velocity: finalVelocity, 
-        origin: ship.position.clone(),
+        origin: spawnPos.clone(),
         spawn: Date.now() 
     };
-    scene.add(p); bullets.push(p);
+    
+    scene.add(p); 
+    bullets.push(p);
 }
 
        function spawnWave() {
