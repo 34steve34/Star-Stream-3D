@@ -1,4 +1,4 @@
-// Star Stream PWA - VERSION 3.8.0 - 2026-02-12
+// Star Stream PWA - VERSION 3.8.1 - 2026-02-12
 // v3.8.0: gemini pro added bullet velocity by calc gun tip movement through one frame
 // v3.7.0: Fixed rotational kick physics (ω × r), scope persistence, bloom edge-clamping
 // v3.6.2: Added target motion orbitSpeed, ship velocity to bullet, rotational KICK debug
@@ -7,7 +7,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v3.8.0';
+const CACHE_NAME = 'star-stream-3D-v3.8.1';
 const urlsToCache = [
   './',
   './index.html',
