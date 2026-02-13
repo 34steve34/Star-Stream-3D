@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.6.2b (Calibrated)</title>
+    <title>Star Stream 3D - v3.6.3 (Calibrated)</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -23,7 +23,7 @@
 </head>
 <body>
     <button id="zeroBtn">CALIBRATE SENSORS</button>
-    <div id="version">v3.6.2b_bloomfix</div>
+    <div id="version">v3.6.3</div>
     <div id="debug">KICK: 0, 0, 0</div>
     <div id="indicator-container"></div>
     <div id="crosshair"></div>

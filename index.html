@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.6.2b</title>
+    <title>Star Stream 3D - v3.6.3</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -35,7 +35,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.6.2b_BLOOM_FIX</div>
+    <div id="version">v3.6.3_PHYSICS_FIX</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -132,6 +132,9 @@
         function animate() {
             requestAnimationFrame(animate);
             if (ship && isInitialized && gameActive) {
+                // CRITICAL: Save BEFORE rotation so fireLaser can calculate kick
+                prevQuaternion.copy(ship.quaternion);
+                
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
                 
@@ -174,7 +177,6 @@
                     camera.position.x += offset; camera.position.y += offset;
                     shakeDuration -= 0.016;
                 }
-                prevQuaternion.copy(ship.quaternion);
             }
 
             targets.forEach(t => {
@@ -310,7 +312,7 @@
                 const vector = t.position.clone().project(camera);
                 const div = document.createElement('div'); div.className = 'indicator';
                 
-                const margin = 20;
+                const margin = 5;  // Reduced from 20 to sit at perimeter
                 const isBehind = vector.z > 1;
                 let x, y;
                 
