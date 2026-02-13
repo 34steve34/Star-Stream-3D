@@ -1,87 +1,212 @@
-// Star Stream PWA - VERSION 3.6.2 - 2026-02-12
-// added target motion orbitSpeed = (Math.random() * 0.001) + 0.00065;
-// 3.5.0 added ship velocity to bullet (bullet drifts with ship and rotation of ship
-// 3.6.0 add debug code for rotational KICK OF bullet
-// bigger stars THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent:
-// Force update trigger → FIXED: Removed all delta time, back to frame-locked
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Star Stream 3D - v3.6.1 (Calibrated)</title>
+    
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
+        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
+        #zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
+        #version { position: absolute; top: 10px; right: 10px; color: rgba(255, 120, 0, 0.7); font-size: 10px; z-index: 30; }
+        #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 104px; height: 104px; background: rgba(0,255,0,0.1); border: 2px solid #0f0; border-radius: 50%; color: #0f0; font-weight: bold; z-index: 20; display: flex; align-items: center; justify-content: center; user-select: none; }
+        #thrustBtn.active { background: rgba(0,255,0,0.4); }
+        #debug { position: absolute; top: 40px; left: 10px; color: #f70; font-size: 9px; pointer-events: none; z-index: 30; }
+        
+        /* FIX: pointer-events: none ensures these don't block firing taps */
+        #indicator-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .indicator { position: absolute; width: 12px; height: 12px; background: #ff7700; border-radius: 50%; box-shadow: 0 0 10px #ff7700; transform: translate(-50%, -50%); transition: opacity 0.1s; }
+        
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; border: 1px solid rgba(0,255,0,0.3); transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <button id="zeroBtn">CALIBRATE SENSORS</button>
+    <div id="version">v3.6.1_HANDOVER</div>
+    <div id="debug">KICK: 0, 0, 0</div>
+    <div id="indicator-container"></div>
+    <div id="crosshair"></div>
+    <div id="ui">
+        <div id="thrustBtn">THRUST</div>
+    </div>
 
-const CACHE_NAME = 'star-stream-3D-v3.6.2';
-const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon192.png',
-  './icon512.png',
-  './libs/three.module.js',
-  './libs/loaders/GLTFLoader.js',
-  './libs/utils/BufferGeometryUtils.js',
-  './assets/ship.glb'
-];
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
 
-// Install event - cache all files
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Caching app files');
-        // Cache files individually so one 404 doesn't break everything
-        return Promise.all(
-          urlsToCache.map(url => {
-            return cache.add(url).catch(err => {
-              console.warn('Failed to cache:', url, err.message);
-            });
-          })
-        );
-      })
-      .then(() => self.skipWaiting()) // Activate immediately
-  );
-});
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// Activate event - clean up old caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim()) // Take control immediately
-  );
-});
+        const CONFIG = {
+            BULLET_SPEED: 9,
+            GUN_LENGTH: 15,
+            KICK_MULTIPLIER: 1.2, // Adjusted for methodical movement
+            ROT_EXPONENT: 1.8,
+            MAX_TARGETS: 12
+        };
 
-// Fetch event - serve from cache, fall back to network
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+        let scene, camera, renderer, ship;
+        let targets = [], bullets = [];
+        let isThrusting = false, pendingShot = false;
+        let baseRotation = { x: 0, y: 0 }, currentRotation = { x: 0, y: 0 };
+        let prevQuaternion = new THREE.Quaternion();
+        let gameActive = false;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const ambient = new THREE.AmbientLight(0x404040, 2);
+            const sun = new THREE.DirectionalLight(0xffffff, 1);
+            sun.position.set(5, 5, 5);
+            scene.add(ambient, sun);
+
+            // Populate Targets
+            for(let i=0; i<CONFIG.MAX_TARGETS; i++) spawnTarget();
+            
+            animate();
         }
-        
-        // Clone the request
-        const fetchRequest = event.request.clone();
-        
-        return fetch(fetchRequest).then(response => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-          
-          // Clone the response
-          const responseToCache = response.clone();
-          
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
+
+        function spawnTarget() {
+            const geo = new THREE.SphereGeometry(2, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x0077ff, wireframe: true });
+            const t = new THREE.Mesh(geo, mat);
+            t.position.set((Math.random()-0.5)*400, (Math.random()-0.5)*400, (Math.random()-0.5)*400);
+            scene.add(t);
+            targets.push(t);
+        }
+
+        function fireLaser() {
+            const laserGeo = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
+            const laserMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const laser = new THREE.Mesh(laserGeo, laserMat);
+            
+            // 1. Initial Position & Direction
+            const tipLocal = new THREE.Vector3(0, 0, CONFIG.GUN_LENGTH);
+            const worldTip = tipLocal.clone().applyMatrix4(ship.matrixWorld);
+            laser.position.copy(worldTip);
+            laser.quaternion.copy(ship.quaternion);
+            laser.rotateX(Math.PI/2);
+
+            // 2. Rotational Kick (The "Flick")
+            // Compare current orientation to previous frame to find the nose's arc
+            const deltaRotation = ship.quaternion.clone().multiply(prevQuaternion.clone().invert());
+            const futureTip = tipLocal.clone().applyQuaternion(deltaRotation);
+            const rotationalKick = futureTip.sub(tipLocal).applyQuaternion(ship.quaternion);
+            
+            // Apply Multiplier and update HUD
+            rotationalKick.multiplyScalar(CONFIG.KICK_MULTIPLIER);
+            document.getElementById('debug').innerText = `KICK X:${rotationalKick.x.toFixed(3)} Y:${rotationalKick.y.toFixed(3)}`;
+
+            // 3. Final Velocity Vector
+            const forward = new THREE.Vector3(0, 0, CONFIG.BULLET_SPEED).applyQuaternion(ship.quaternion);
+            laser.userData.velocity = forward.add(rotationalKick);
+            
+            scene.add(laser);
+            bullets.push(laser);
+            pendingShot = false;
+        }
+
+        function updateIndicators() {
+            const container = document.getElementById('indicator-container');
+            container.innerHTML = '';
+            if(!ship) return;
+
+            const frustum = new THREE.Frustum().setFromProjectionMatrix(
+                new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+            );
+
+            targets.forEach(t => {
+                // If visible in front, let the blue mesh represent it
+                if (frustum.containsPoint(t.position)) return;
+
+                const vector = t.position.clone().project(camera);
+                const div = document.createElement('div');
+                div.className = 'indicator';
+
+                let x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2);
+                let y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
+
+                // FIX: Depth check. If behind camera, project to opposite edge to prevent "floating"
+                if (vector.z > 1) {
+                    x = window.innerWidth - x;
+                    y = window.innerHeight - y;
+                }
+
+                // Clamping to perimeter
+                const margin = 25;
+                div.style.left = `${Math.max(margin, Math.min(window.innerWidth - margin, x))}px`;
+                div.style.top = `${Math.max(margin, Math.min(window.innerHeight - margin, y))}px`;
+                
+                container.appendChild(div);
             });
-          
-          return response;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!ship) return;
+
+            // Save state for physics delta calculation
+            prevQuaternion.copy(ship.quaternion);
+
+            // Update Ship Orientation
+            ship.rotation.x = THREE.MathUtils.lerp(ship.rotation.x, currentRotation.x, 0.1);
+            ship.rotation.y = THREE.MathUtils.lerp(ship.rotation.y, currentRotation.y, 0.1);
+
+            // Sync Camera to Cockpit
+            camera.position.copy(ship.position);
+            camera.quaternion.slerp(ship.quaternion, 0.5);
+
+            // Fire if flagged (Calculates using "freshest" frame data)
+            if(pendingShot) fireLaser();
+
+            // Projectile Physics
+            bullets.forEach((b, i) => {
+                b.position.add(b.userData.velocity);
+                if(b.position.distanceTo(ship.position) > 1000) {
+                    scene.add(b); bullets.splice(i, 1);
+                }
+            });
+
+            updateIndicators();
+            renderer.render(scene, camera);
+        }
+
+        // Input Handlers
+        const onDeviceMove = (e) => {
+            const pitch = (e.beta - baseRotation.x) * (Math.PI / 180);
+            const yaw = (e.gamma - baseRotation.y) * (Math.PI / 180);
+            currentRotation.x = Math.sign(pitch) * Math.pow(Math.abs(pitch), CONFIG.ROT_EXPONENT);
+            currentRotation.y = Math.sign(yaw) * Math.pow(Math.abs(yaw), CONFIG.ROT_EXPONENT);
+        };
+
+        document.getElementById('zeroBtn').addEventListener('click', () => {
+            window.addEventListener('deviceorientation', (e) => {
+                if(!gameActive) {
+                    baseRotation = { x: e.beta, y: e.gamma };
+                    gameActive = true;
+                    init();
+                }
+            }, { once: true });
+            window.addEventListener('deviceorientation', onDeviceMove);
         });
-      })
-  );
-});
+
+        window.addEventListener('touchstart', (e) => { 
+            if(e.target.id !== 'thrustBtn') pendingShot = true; 
+        });
+
+        // Load Ship Model
+        new GLTFLoader().load('./assets/ship.glb', (gltf) => {
+            ship = gltf.scene; 
+            ship.scale.setScalar(3.0); 
+            ship.position.set(0, 0, -100); 
+            scene.add(ship);
+        });
+    </script>
+</body>
+</html>
