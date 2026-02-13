@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.6.1</title>
+    <title>Star Stream 3D - v3.6.2b</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -35,7 +35,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.6.1</div>
+    <div id="version">v3.6.2b_BLOOM_FIX</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -309,10 +309,37 @@
                 if (frustum.containsPoint(t.position)) return;
                 const vector = t.position.clone().project(camera);
                 const div = document.createElement('div'); div.className = 'indicator';
-                let x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2);
-                let y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
-                div.style.left = `${Math.max(20, Math.min(window.innerWidth - 20, x))}px`;
-                div.style.top = `${Math.max(20, Math.min(window.innerHeight - 20, y))}px`;
+                
+                const margin = 20;
+                const isBehind = vector.z > 1;
+                let x, y;
+                
+                if (isBehind) {
+                    // BLOOM FIX: Target behind camera - clamp to perimeter
+                    const dirX = vector.x;
+                    const dirY = -vector.y;
+                    const len = Math.sqrt(dirX * dirX + dirY * dirY);
+                    if (len < 0.001) {
+                        x = window.innerWidth / 2; y = window.innerHeight - margin;
+                    } else {
+                        const normX = dirX / len, normY = dirY / len;
+                        const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2;
+                        const tRight = normX > 0 ? (halfW - margin) / (normX * halfW) : Infinity;
+                        const tLeft = normX < 0 ? -(halfW - margin) / (normX * halfW) : Infinity;
+                        const tTop = normY < 0 ? -(halfH - margin) / (normY * halfH) : Infinity;
+                        const tBottom = normY > 0 ? (halfH - margin) / (normY * halfH) : Infinity;
+                        const t = Math.min(tRight, tLeft, tTop, tBottom);
+                        x = halfW + normX * t * halfW; y = halfH + normY * t * halfH;
+                    }
+                } else {
+                    x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2);
+                    y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
+                    x = Math.max(margin, Math.min(window.innerWidth - margin, x));
+                    y = Math.max(margin, Math.min(window.innerHeight - margin, y));
+                }
+                
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
                 container.appendChild(div);
             });
         }
