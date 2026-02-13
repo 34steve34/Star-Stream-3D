@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.6.3</title>
+    <title>Star Stream 3D - v3.7.0</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -35,7 +35,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.6.3_PHYSICS_FIX</div>
+    <div id="version">v3.7.0_PHYSICS_SCOPE_DEBUG</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -81,6 +81,7 @@
 		let prevQuaternion = new THREE.Quaternion();
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
+        let activeScopeBullet = null;  // Track bullet for scope persistence
 
         let orientationMode = 'upright';
         let pitchMultiplier = 1;
@@ -197,10 +198,29 @@
             const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             const bulletForwardVel = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
 
+            // CORRECTED DUCK HUNTER PHYSICS: ω × r formula
             const deltaRotation = ship.quaternion.clone().multiply(prevQuaternion.clone().invert());
-            const tipLocal = new THREE.Vector3(0, 0, GUN_LENGTH);
-            const futureTip = tipLocal.clone().applyQuaternion(deltaRotation);
-            const rotationalKick = futureTip.sub(tipLocal).applyQuaternion(ship.quaternion);
+            
+            // Extract angular velocity from quaternion delta
+            // For small rotations: θ ≈ 2 * acos(w), axis = (x,y,z)/sin(θ/2)
+            const angle = 2 * Math.acos(Math.min(1, Math.abs(deltaRotation.w)));
+            const axis = new THREE.Vector3(deltaRotation.x, deltaRotation.y, deltaRotation.z);
+            const axisLength = axis.length();
+            
+            let rotationalKick = new THREE.Vector3(0, 0, 0);
+            if (axisLength > 0.0001 && angle > 0.0001) {
+                // Angular velocity vector ω (in rad/frame, assuming 60fps)
+                const omega = axis.normalize().multiplyScalar(angle * 60);
+                
+                // Gun tip position in local space
+                const gunTipLocal = new THREE.Vector3(0, 0, GUN_LENGTH);
+                
+                // Tangential velocity = ω × r
+                rotationalKick.crossVectors(omega, gunTipLocal);
+                
+                // Transform to world space
+                rotationalKick.applyQuaternion(ship.quaternion);
+            }
 
             const debugEl = document.getElementById('debug');
             if (debugEl) debugEl.innerText = `KICK X: ${rotationalKick.x.toFixed(3)} | Y: ${rotationalKick.y.toFixed(3)} | Z: ${rotationalKick.z.toFixed(3)}`;
@@ -209,8 +229,11 @@
             const p = new THREE.Group();
             p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
             p.position.copy(spawnPos);
-            p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now() };
+            p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now(), trackingScope: true };
             scene.add(p); bullets.push(p);
+            
+            // Mark that we have an active tracking bullet for scope persistence
+            activeScopeBullet = p;
         }
 
         function spawnWave() {
@@ -307,13 +330,23 @@
             const container = document.getElementById('indicator-container');
             container.innerHTML = ''; if(!ship || !gameActive) return;
             const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+            
+            let inView = 0, inFront = 0, behind = 0;
+            
             targets.forEach(t => {
-                if (frustum.containsPoint(t.position)) return;
+                // Count targets by position
                 const vector = t.position.clone().project(camera);
+                const isBehind = vector.z > 1;
+                const inFrustum = frustum.containsPoint(t.position);
+                
+                if (inFrustum) inView++;
+                if (isBehind) behind++; else inFront++;
+                
+                if (inFrustum) return;  // In view - blue mesh shows it
+                
                 const div = document.createElement('div'); div.className = 'indicator';
                 
-                const margin = 5;  // Reduced from 20 to sit at perimeter
-                const isBehind = vector.z > 1;
+                const margin = 5;
                 let x, y;
                 
                 if (isBehind) {
@@ -344,17 +377,32 @@
                 div.style.top = `${y}px`;
                 container.appendChild(div);
             });
+            
+            // Update debug display with target distribution
+            const debugEl = document.getElementById('debug');
+            const kickText = debugEl ? debugEl.innerText.split('|')[0] : 'KICK';
+            if (debugEl) debugEl.innerText = `${kickText} | VIEW:${inView} FRONT:${inFront} BEHIND:${behind}`;
         }
 
         function updateScope() {
             if (!ship || !gameActive) return;
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             let active = false;
+            
+            // Check for target in line of fire
             for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
                 const p = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
                 for (let t of targets) if (p.distanceTo(t.position) < CONFIG.SCOPE_HIT_DISTANCE) { active = true; break; }
                 if (active) break;
             }
+            
+            // SCOPE PERSISTENCE: Keep scope up if tracking an active bullet
+            if (activeScopeBullet && bullets.includes(activeScopeBullet)) {
+                active = true;  // Force scope to stay active while bullet flies
+            } else if (activeScopeBullet) {
+                activeScopeBullet = null;  // Bullet expired/hit, clear tracking
+            }
+            
             if (active) {
                 scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
                 scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
