@@ -1,4 +1,5 @@
-// Star Stream PWA - VERSION 3.7.0 - 2026-02-12
+// Star Stream PWA - VERSION 3.8.0 - 2026-02-12
+// v3.8.0: gemini pro added bullet velocity by calc gun tip movement through one frame
 // v3.7.0: Fixed rotational kick physics (ω × r), scope persistence, bloom edge-clamping
 // v3.6.2: Added target motion orbitSpeed, ship velocity to bullet, rotational KICK debug
 // v3.6.0: Added debug code for rotational KICK of bullet

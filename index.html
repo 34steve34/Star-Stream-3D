@@ -73,6 +73,9 @@
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
+		const clock = new THREE.Clock(); // To track time between frames
+		let gunTipVelocity = new THREE.Vector3(); // Stores the calculated kick
+		let prevGunTipPos = new THREE.Vector3(); // Stores tip position from last frame
         let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
         let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
@@ -95,6 +98,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
+
+			clock.start();
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -130,112 +135,151 @@
             ctx.beginPath(); ctx.arc(centerX, centerY, 1.2, 0, Math.PI * 2); ctx.fill();
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            if (ship && isInitialized && gameActive) {
-                // CRITICAL: Save BEFORE rotation so fireLaser can calculate kick
-                prevQuaternion.copy(ship.quaternion);
-                
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                
-                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
-                ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+       function animate() {
+    requestAnimationFrame(animate);
 
-                if (pendingShot) {
-                    fireLaser();
-                    pendingShot = false;
-                }
+    const dt = clock.getDelta(); // Time since last frame in seconds
 
-                if (isThrusting) {
-                    const dir = new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).normalize();
-                    velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
-                    if(velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
-                    engineBeam.scale.set(1, 1.2 + Math.random()*0.8, 1);
-                    engineLight.intensity = 3000; 
-                    if (Math.random() < 0.4) spawnTrail();
-                } else {
-                    velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
-                    engineBeam.scale.set(0,0,0); engineLight.intensity = 0;
-                }
-                ship.position.add(velocityVec);
+    if (ship && isInitialized && gameActive) {
+        // 1. APPLY ROTATION (User Input)
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
-                const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
-                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
-                camera.updateProjectionMatrix();
+        ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+        ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
 
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
-                
-                const dist = ship.position.distanceTo(camera.position);
-                if (dist > CONFIG.CAMERA_RADIUS) {
-                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
-                }
-                const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
-                camera.quaternion.slerp(targetQuat, 0.08);
+        // 2. CALCULATE GUN TIP VELOCITY (The Fix)
+        // Define where the gun tip is relative to the ship (15 units forward)
+        const gunOffset = new THREE.Vector3(0, 0, 15); 
+        
+        // Calculate current world position of the gun tip
+        const currentGunTipPos = gunOffset.clone()
+            .applyQuaternion(ship.quaternion)
+            .add(ship.position);
 
-                if (shakeDuration > 0) {
-                    const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
-                    camera.position.x += offset; camera.position.y += offset;
-                    shakeDuration -= 0.016;
-                }
-            }
-
-            targets.forEach(t => {
-                t.userData.angle += t.userData.speed;
-                const offset = new THREE.Vector3(Math.cos(t.userData.angle) * t.userData.radius, 0, Math.sin(t.userData.angle) * t.userData.radius);
-                offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
-                t.position.copy(t.userData.center).add(offset);
-            });
-			
-			handleBullets(); 
-            renderer.render(scene, camera);
+        // If this is the very first frame, just copy current to prev to avoid a huge spike
+        if (prevGunTipPos.lengthSq() === 0) {
+            prevGunTipPos.copy(currentGunTipPos);
         }
 
-        function fireLaser() {
-            if (!ship || !gameActive) return;
-            const GUN_LENGTH = 15;
-            const spawnPos = new THREE.Vector3(0, 0, GUN_LENGTH).applyQuaternion(ship.quaternion).add(ship.position);
-            const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            const bulletForwardVel = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
-
-            // CORRECTED DUCK HUNTER PHYSICS: ω × r formula
-            const deltaRotation = ship.quaternion.clone().multiply(prevQuaternion.clone().invert());
-            
-            // Extract angular velocity from quaternion delta
-            // For small rotations: θ ≈ 2 * acos(w), axis = (x,y,z)/sin(θ/2)
-            const angle = 2 * Math.acos(Math.min(1, Math.abs(deltaRotation.w)));
-            const axis = new THREE.Vector3(deltaRotation.x, deltaRotation.y, deltaRotation.z);
-            const axisLength = axis.length();
-            
-            let rotationalKick = new THREE.Vector3(0, 0, 0);
-            if (axisLength > 0.0001 && angle > 0.0001) {
-                // Angular velocity vector ω (in rad/frame, assuming 60fps)
-                const omega = axis.normalize().multiplyScalar(angle * 60);
-                
-                // Gun tip position in local space
-                const gunTipLocal = new THREE.Vector3(0, 0, GUN_LENGTH);
-                
-                // Tangential velocity = ω × r
-                rotationalKick.crossVectors(omega, gunTipLocal);
-                
-                // Transform to world space
-                rotationalKick.applyQuaternion(ship.quaternion);
-            }
-
-            const debugEl = document.getElementById('debug');
-            if (debugEl) debugEl.innerText = `KICK X: ${rotationalKick.x.toFixed(3)} | Y: ${rotationalKick.y.toFixed(3)} | Z: ${rotationalKick.z.toFixed(3)}`;
-
-            const finalVelocity = new THREE.Vector3().add(bulletForwardVel).add(velocityVec).add(rotationalKick);
-            const p = new THREE.Group();
-            p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
-            p.position.copy(spawnPos);
-            p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now(), trackingScope: true };
-            scene.add(p); bullets.push(p);
-            
-            // Mark that we have an active tracking bullet for scope persistence
-            activeScopeBullet = p;
+        // Calculate velocity: (Change in Position) / (Change in Time)
+        // We clone currentGunTipPos because sub() modifies the vector
+        if (dt > 0) {
+            gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos).divideScalar(dt);
         }
 
+        // Update prev for the next frame
+        prevGunTipPos.copy(currentGunTipPos);
+
+
+        // 3. FIRE LOGIC
+        if (pendingShot) {
+            fireLaser();
+            pendingShot = false;
+        }
+
+        // 4. MOVEMENT PHYSICS (Thrust/Drift)
+        if (isThrusting) {
+            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
+            if (velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
+            
+            // Visuals
+            engineBeam.scale.set(1, 1.2 + Math.random() * 0.8, 1);
+            engineLight.intensity = 3000;
+            if (Math.random() < 0.4) spawnTrail();
+        } else {
+            velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
+            engineBeam.scale.set(0, 0, 0);
+            engineLight.intensity = 0;
+        }
+        ship.position.add(velocityVec);
+
+
+        // 5. CAMERA & HUD UPDATES
+        const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
+        camera.updateProjectionMatrix();
+
+        handleStarWrap();
+        handleLocalStars();
+        updateIndicators();
+        updateScope();
+        updateExplosions();
+
+        const dist = ship.position.distanceTo(camera.position);
+        if (dist > CONFIG.CAMERA_RADIUS) {
+            camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
+        }
+        const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
+        camera.quaternion.slerp(targetQuat, 0.08);
+
+        if (shakeDuration > 0) {
+            const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
+            camera.position.x += offset;
+            camera.position.y += offset;
+            shakeDuration -= 0.016;
+        }
+    }
+
+    // 6. ENTITY UPDATES
+    targets.forEach(t => {
+        t.userData.angle += t.userData.speed;
+        const offset = new THREE.Vector3(Math.cos(t.userData.angle) * t.userData.radius, 0, Math.sin(t.userData.angle) * t.userData.radius);
+        offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
+        t.position.copy(t.userData.center).add(offset);
+    });
+
+    handleBullets();
+    renderer.render(scene, camera);
+}
+   function fireLaser() {
+    if (!ship || !gameActive) return;
+    const GUN_LENGTH = 15;
+    
+    // 1. Determine Spawn Point
+    const spawnPos = new THREE.Vector3(0, 0, GUN_LENGTH)
+        .applyQuaternion(ship.quaternion)
+        .add(ship.position);
+
+    // 2. Base Bullet Velocity (Forward)
+    const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+    const bulletSpeedVector = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
+
+    // 3. Combine: Bullet Speed + The Gun Tip's Physical Momentum
+    // gunTipVelocity already includes the ship's movement (velocityVec) AND the rotational swing!
+    // Note: We multiply gunTipVelocity by a factor (e.g. 0.5 or 1.0) to tune how "heavy" the swing feels.
+    // 1.0 is physically accurate.
+    const finalVelocity = new THREE.Vector3()
+        .add(bulletSpeedVector)
+        .add(gunTipVelocity); 
+
+    // Debugging
+    const debugEl = document.getElementById('debug');
+    if (debugEl) {
+        // Calculate just the lateral kick for display (GunVel - ShipVel)
+        const kickOnly = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec);
+        debugEl.innerText = `KICK X: ${kickOnly.x.toFixed(2)} | Y: ${kickOnly.y.toFixed(2)} | Z: ${kickOnly.z.toFixed(2)}`;
+    }
+
+    // 4. Create Bullet
+    const p = new THREE.Group();
+    p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
+    p.position.copy(spawnPos);
+    
+    // Store velocity and spawn time
+    p.userData = { 
+        velocity: finalVelocity, 
+        origin: spawnPos.clone(), 
+        spawn: Date.now(), 
+        trackingScope: true 
+    };
+    
+    scene.add(p); 
+    bullets.push(p);
+    
+    activeScopeBullet = p;
+}
         function spawnWave() {
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
