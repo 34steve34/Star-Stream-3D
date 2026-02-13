@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.9.0</title>
+    <title>Star Stream 3D - v3.9.1</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.9.0</div>
+    <div id="version">v3.9.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -435,62 +435,75 @@
             
         }
 
-     function updateScope() {
-            if (!ship || !gameActive) return;
-            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            let active = false;
-            let activeTarget = null;
-            let targetDist = 0;
+ function updateScope() {
+    if (!ship || !gameActive) return;
+    const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+    
+    let activeTarget = null;
+    let shortestDist = Infinity;
+    
+    // Scan for all targets within the scope range
+    for (let t of targets) {
+        // Calculate distance from the line of fire (ray-sphere distance)
+        const targetVec = t.position.clone().sub(ship.position);
+        const projection = targetVec.dot(shipForward);
+        
+        // Only consider targets in front of us and within range
+        if (projection > 0 && projection < CONFIG.SCOPE_RANGE) {
+            const closestPointOnRay = ship.position.clone().add(shipForward.clone().multiplyScalar(projection));
+            const lateralDist = closestPointOnRay.distanceTo(t.position);
             
-            // Check for target in line of fire
-            for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
-                const p = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
-                for (let t of targets) {
-                    if (p.distanceTo(t.position) < CONFIG.SCOPE_HIT_DISTANCE) { 
-                        active = true; 
-                        activeTarget = t;
-                        targetDist = step;
-                        break; 
-                    }
+            // If the target is within the scope's "vision" cone
+            if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE) {
+                if (projection < shortestDist) {
+                    shortestDist = projection;
+                    activeTarget = t;
                 }
-                if (active) break;
-            }
-            
-            // SCOPE PERSISTENCE: Keep scope up if tracking an active bullet
-            if (activeScopeBullet && bullets.includes(activeScopeBullet)) {
-                active = true;
-            } else if (activeScopeBullet) {
-                activeScopeBullet = null;
-            }
-            
-            if (active) {
-                scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
-                scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
-                scopeRenderer.render(scene, scopeCamera);
-                scopeCanvas.style.display = 'block'; 
-                document.getElementById('scopeCrosshair').style.display = 'block';
-                document.getElementById('scopeData').style.display = 'block';
-
-                // Update Telemetry Data
-                if (activeTarget) {
-                    document.getElementById('scopeDist').innerText = `DST: ${Math.floor(targetDist)}m`;
-                    document.getElementById('scopeSpd').innerText = `SPD: ${Math.floor(activeTarget.userData.speed * 20000)}`;
-                } else {
-                    document.getElementById('scopeDist').innerText = `DST: TRK`;
-                    document.getElementById('scopeSpd').innerText = `SPD: TRK`;
-                }
-
-                // Calculate lateral kick (Gun Vel minus Ship Vel) to help them aim
-                const lateralSpeed = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec).length();
-                document.getElementById('scopeKick').innerText = `KCK: ${(lateralSpeed * 100).toFixed(1)}`;
-
-            } else {
-                scopeCanvas.style.display = 'none'; 
-                document.getElementById('scopeCrosshair').style.display = 'none';
-                document.getElementById('scopeData').style.display = 'none';
             }
         }
-	 
+    }
+    
+    // Determine if scope should be visible
+    const hasBullet = activeScopeBullet && bullets.includes(activeScopeBullet);
+    const showScope = activeTarget || hasBullet;
+
+    if (showScope) {
+        scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
+        scopeCamera.quaternion.copy(ship.quaternion); 
+        scopeCamera.rotateY(Math.PI);
+        
+        scopeRenderer.render(scene, scopeCamera);
+        
+        scopeCanvas.style.display = 'block'; 
+        document.getElementById('scopeCrosshair').style.display = 'block';
+        document.getElementById('scopeData').style.display = 'block';
+
+        const distEl = document.getElementById('scopeDist');
+        const spdEl = document.getElementById('scopeSpd');
+
+        if (activeTarget) {
+            const speedVal = Math.floor(activeTarget.userData.speed * 20000);
+            distEl.innerText = `DST: ${Math.floor(shortestDist)}m`;
+            spdEl.innerText = `SPD: ${speedVal}`;
+            // Visual feedback: solid red when locked on
+            distEl.style.color = '#ff0000';
+            spdEl.style.color = '#ff0000';
+        } else {
+            distEl.innerText = `DST: TRK`;
+            spdEl.innerText = `SPD: TRK`;
+            distEl.style.color = '#aa0000'; // Dimmer red when just tracking a bullet
+            spdEl.style.color = '#aa0000';
+        }
+
+        const lateralSpeed = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec).length();
+        document.getElementById('scopeKick').innerText = `KCK: ${(lateralSpeed * 100).toFixed(1)}`;
+
+    } else {
+        scopeCanvas.style.display = 'none'; 
+        document.getElementById('scopeCrosshair').style.display = 'none';
+        document.getElementById('scopeData').style.display = 'none';
+    }
+} 
         function onDeviceMove(e) {
             if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
