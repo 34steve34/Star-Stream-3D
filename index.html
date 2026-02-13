@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.8.1</title>
+    <title>Star Stream 3D - v3.9.0</title>
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
@@ -24,6 +24,14 @@
             position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
             width: 180px; height: 180px; z-index: 17; display: none; pointer-events: none;
         }
+		#scopeData {
+            position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+            width: 180px; height: 180px; z-index: 18; display: none; pointer-events: none;
+            color: #ff0000; font-family: monospace; font-size: 11px; text-shadow: 0 0 5px #ff0000;
+        }
+        #scopeDist { position: absolute; top: 25px; left: 25px; }
+        #scopeSpd { position: absolute; top: 40px; left: 25px; }
+        #scopeKick { position: absolute; bottom: 25px; right: 25px; }
         #scopeReticle {
             position: absolute; bottom: 210px; left: 50%; transform: translate(-50%, -50%);
             width: 6px; height: 6px; background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%);
@@ -31,11 +39,11 @@
         }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
         button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #debug { position: absolute; top: 80px; left: 20px; color: #ff00ff; font-family: monospace; font-size: 14px; pointer-events: none; z-index: 100; text-shadow: 1px 1px 2px #000; }
+       
     </style>
 </head>
 <body>
-    <div id="version">v3.8.1</div>
+    <div id="version">v3.9.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -47,9 +55,13 @@
     <div id="indicator-container"></div>
     <canvas id="scopeCanvas"></canvas>
     <canvas id="scopeCrosshair" width="180" height="180"></canvas>
+	<div id="scopeData">
+        <div id="scopeDist">DST: ---</div>
+        <div id="scopeSpd">SPD: ---</div>
+        <div id="scopeKick">KCK: ---</div>
+    </div>
     <div id="scopeReticle"></div>
-	<div id="debug">KICK X: 0.00 | Y: 0.00 | Z: 0.00</div>
-
+	
     <script type="importmap">
         {
             "imports": {
@@ -165,7 +177,8 @@
         // Calculate velocity: (Change in Position) / (Change in Time)
         // We clone currentGunTipPos because sub() modifies the vector
         if (dt > 0) {
-            gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos).divideScalar(dt);
+            gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos);
+			prevGunTipPos.copy(currentGunTipPos);
         }
 
         // Update prev for the next frame
@@ -254,14 +267,7 @@
         .add(bulletSpeedVector)
         .add(gunTipVelocity); 
 
-    // Debugging
-    const debugEl = document.getElementById('debug');
-    if (debugEl) {
-        // Calculate just the lateral kick for display (GunVel - ShipVel)
-        const kickOnly = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec);
-        debugEl.innerText = `KICK X: ${kickOnly.x.toFixed(2)} | Y: ${kickOnly.y.toFixed(2)} | Z: ${kickOnly.z.toFixed(2)}`;
-    }
-
+    
     // 4. Create Bullet
     const p = new THREE.Group();
     p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
@@ -298,7 +304,12 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 28) {
-                        score += 10 + Math.floor(b.position.distanceTo(b.userData.origin)/50);
+                        const dist = b.position.distanceTo(b.userData.origin);
+						const distBonus = Math.floor(dist / 10); // More points for distance
+						const speedBonus = Math.floor(t.userData.speed * 20000); // 13 to 33 extra points based on orbit speed
+
+						const totalAward = 10 + distBonus + speedBonus;
+						score += totalAward;
                         createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
                         if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
@@ -422,41 +433,64 @@
                 container.appendChild(div);
             });
             
-            // Update debug display with target distribution
-            const debugEl = document.getElementById('debug');
-            const kickText = debugEl ? debugEl.innerText.split('|')[0] : 'KICK';
-            if (debugEl) debugEl.innerText = `${kickText} | VIEW:${inView} FRONT:${inFront} BEHIND:${behind}`;
         }
 
-        function updateScope() {
+     function updateScope() {
             if (!ship || !gameActive) return;
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
             let active = false;
+            let activeTarget = null;
+            let targetDist = 0;
             
             // Check for target in line of fire
             for (let step = 0; step < CONFIG.SCOPE_RANGE; step += CONFIG.BULLET_CHECK_STEP) {
                 const p = ship.position.clone().add(shipForward.clone().multiplyScalar(step));
-                for (let t of targets) if (p.distanceTo(t.position) < CONFIG.SCOPE_HIT_DISTANCE) { active = true; break; }
+                for (let t of targets) {
+                    if (p.distanceTo(t.position) < CONFIG.SCOPE_HIT_DISTANCE) { 
+                        active = true; 
+                        activeTarget = t;
+                        targetDist = step;
+                        break; 
+                    }
+                }
                 if (active) break;
             }
             
             // SCOPE PERSISTENCE: Keep scope up if tracking an active bullet
             if (activeScopeBullet && bullets.includes(activeScopeBullet)) {
-                active = true;  // Force scope to stay active while bullet flies
+                active = true;
             } else if (activeScopeBullet) {
-                activeScopeBullet = null;  // Bullet expired/hit, clear tracking
+                activeScopeBullet = null;
             }
             
             if (active) {
                 scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
                 scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
                 scopeRenderer.render(scene, scopeCamera);
-                scopeCanvas.style.display = 'block'; document.getElementById('scopeCrosshair').style.display = 'block';
+                scopeCanvas.style.display = 'block'; 
+                document.getElementById('scopeCrosshair').style.display = 'block';
+                document.getElementById('scopeData').style.display = 'block';
+
+                // Update Telemetry Data
+                if (activeTarget) {
+                    document.getElementById('scopeDist').innerText = `DST: ${Math.floor(targetDist)}m`;
+                    document.getElementById('scopeSpd').innerText = `SPD: ${Math.floor(activeTarget.userData.speed * 20000)}`;
+                } else {
+                    document.getElementById('scopeDist').innerText = `DST: TRK`;
+                    document.getElementById('scopeSpd').innerText = `SPD: TRK`;
+                }
+
+                // Calculate lateral kick (Gun Vel minus Ship Vel) to help them aim
+                const lateralSpeed = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec).length();
+                document.getElementById('scopeKick').innerText = `KCK: ${(lateralSpeed * 100).toFixed(1)}`;
+
             } else {
-                scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none';
+                scopeCanvas.style.display = 'none'; 
+                document.getElementById('scopeCrosshair').style.display = 'none';
+                document.getElementById('scopeData').style.display = 'none';
             }
         }
-
+	 
         function onDeviceMove(e) {
             if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
