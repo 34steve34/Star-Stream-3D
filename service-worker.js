@@ -7,7 +7,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v3.7.0';
+const CACHE_NAME = 'star-stream-3D-v3.8.0';
 const urlsToCache = [
   './',
   './index.html',
