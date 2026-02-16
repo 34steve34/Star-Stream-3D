@@ -1,4 +1,4 @@
-// Star Stream PWA - VERSION 3.9.6 - 2026-02-16
+// Star Stream PWA - VERSION 3.9.7 - 2026-02-16
 //  kiro trying to fix gimbal lock .4 and .5
 //  .3 correct the lying position gameplay YAW
 //  .2 fix manifest to for app loading 
@@ -11,7 +11,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v3.9.6';
+const CACHE_NAME = 'star-stream-3D-v3.9.7';
 const urlsToCache = [
   './',
   './index.html',
