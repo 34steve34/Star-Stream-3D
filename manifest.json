@@ -1,6 +1,6 @@
 {
-  "name": "Star Stream",
-  "short_name": "Star Stream",
+  "name": "Star Stream 3D",
+  "short_name": "StarStream 3D",
   "description": "Space shooter game with gyroscope controls",
   "start_url": "./",
   "scope": "./",
@@ -34,4 +34,5 @@
       "purpose": "maskable"
     }
   ]
+
 }
