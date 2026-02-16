@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.0.0</title>
+    <title>Star Stream 3D - v4.1.0</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -15,26 +15,28 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
+        
+        /* Scope UI: Moved to bottom and resized to 220px */
         #scopeCanvas { 
-            position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); 
-            width: 180px; height: 180px; border: 3px solid rgba(255, 0, 0, 0.8); 
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
+            width: 220px; height: 220px; border: 3px solid rgba(255, 0, 0, 0.8); 
             border-radius: 50%; z-index: 15; display: none;
             box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); background: #000;
         }
         #scopeCrosshair {
-            position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
-            width: 180px; height: 180px; z-index: 17; display: none; pointer-events: none;
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 220px; height: 220px; z-index: 17; display: none; pointer-events: none;
         }
 		#scopeData {
-            position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
-            width: 180px; height: 180px; z-index: 18; display: none; pointer-events: none;
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 220px; height: 220px; z-index: 18; display: none; pointer-events: none;
             color: #ff0000; font-family: monospace; font-size: 11px; text-shadow: 0 0 5px #ff0000;
         }
-        #scopeDist { position: absolute; top: 25px; left: 25px; }
-        #scopeSpd { position: absolute; top: 40px; left: 25px; }
-        #scopeKick { position: absolute; bottom: 25px; right: 25px; }
+        #scopeDist { position: absolute; top: 35px; left: 35px; }
+        #scopeSpd { position: absolute; top: 50px; left: 35px; }
+        
         #scopeReticle {
-            position: absolute; bottom: 210px; left: 50%; transform: translate(-50%, -50%);
+            position: absolute; bottom: 130px; left: 50%; transform: translate(-50%, -50%);
             width: 6px; height: 6px; background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%);
             border-radius: 50%; z-index: 16; display: none; box-shadow: 0 0 8px #ff0000;
         }
@@ -44,7 +46,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.0.0</div>
+    <div id="version">v4.1.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -55,11 +57,10 @@
     <div id="ui"><button id="startBtn">START MISSION</button></div>
     <div id="indicator-container"></div>
     <canvas id="scopeCanvas"></canvas>
-    <canvas id="scopeCrosshair" width="180" height="180"></canvas>
+    <canvas id="scopeCrosshair" width="220" height="220"></canvas>
 	<div id="scopeData">
         <div id="scopeDist">DST: ---</div>
         <div id="scopeSpd">SPD: ---</div>
-        <div id="scopeKick">KCK: ---</div>
     </div>
     <div id="scopeReticle"></div>
 	
@@ -81,27 +82,22 @@
             PITCH_SENSITIVITY: 0.035, YAW_SENSITIVITY: 0.03, EXPONENT: 1.6, DEADZONE: 1.2,
             SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 800,
             CAMERA_RADIUS: 80, MISSION_TIME: 180, BASE_FOV: 75, MAX_FOV_BOOST: 18,
-            FOV_SMOOTHING: 0.03, SCOPE_RANGE: 2000, SCOPE_FOV: 25, SCOPE_FORWARD_OFFSET: 8,
+            FOV_SMOOTHING: 0.03, SCOPE_RANGE: 2000, SCOPE_FOV: 30, SCOPE_FORWARD_OFFSET: 8,
             SCOPE_HIT_DISTANCE: 150, BULLET_CHECK_STEP: 20, EXPLOSION_SHARDS: 20, SHAKE_INTENSITY: 2.0
         };
 
         let scene, camera, renderer, ship, engineBeam, engineLight;
-		const clock = new THREE.Clock(); // To track time between frames
-		let gunTipVelocity = new THREE.Vector3(); // Stores the calculated kick
-		let prevGunTipPos = new THREE.Vector3(); // Stores tip position from last frame
+		const clock = new THREE.Clock();
+		let gunTipVelocity = new THREE.Vector3();
+		let prevGunTipPos = new THREE.Vector3();
         let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
         let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, pendingShot = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
-		let prevQuaternion = new THREE.Quaternion();
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
-        let activeScopeBullet = null;  // Track bullet for scope persistence
-
-        let orientationMode = 'upright';
-        let pitchMultiplier = 1;
-        let yawMultiplier = 1;
+        let activeScopeBullet = null;
 
         function init() {
             scene = new THREE.Scene();
@@ -132,12 +128,12 @@
             scopeReticle = document.getElementById('scopeReticle');
             scopeCamera = new THREE.PerspectiveCamera(CONFIG.SCOPE_FOV, 1, 1, 3000);
             scopeRenderer = new THREE.WebGLRenderer({ canvas: scopeCanvas, antialias: true });
-            scopeRenderer.setSize(180, 180);
+            scopeRenderer.setSize(220, 220);
             scopeRenderer.setClearColor(0x000000, 1.0);
             
             const crosshairCanvas = document.getElementById('scopeCrosshair');
             const ctx = crosshairCanvas.getContext('2d');
-            const centerX = 90, centerY = 90, lineLength = 45, gap = 6;
+            const centerX = 110, centerY = 110, lineLength = 55, gap = 8;
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)';
             ctx.lineWidth = 1.2;
             ctx.beginPath(); ctx.moveTo(centerX, centerY - gap); ctx.lineTo(centerX, centerY - gap - lineLength); ctx.stroke();
@@ -145,168 +141,124 @@
             ctx.beginPath(); ctx.moveTo(centerX - gap, centerY); ctx.lineTo(centerX - gap - lineLength, centerY); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(centerX + gap, centerY); ctx.lineTo(centerX + gap + lineLength, centerY); ctx.stroke();
             ctx.fillStyle = 'rgba(255, 0, 0, 0.95)';
-            ctx.beginPath(); ctx.arc(centerX, centerY, 1.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2); ctx.fill();
         }
 
        function animate() {
-    requestAnimationFrame(animate);
+            if (!gameActive) return;
+            requestAnimationFrame(animate);
 
-    const dt = clock.getDelta(); // Time since last frame in seconds
+            const dt = clock.getDelta();
 
-    if (ship && isInitialized && gameActive) {
-        // 1. APPLY ROTATION (User Input) with pitch limiting
-        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-        const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+            if (ship && isInitialized) {
+                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
-        // Apply yaw (left/right) freely
-        ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
-        
-        // Calculate current pitch angle relative to world up
-        const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-        const currentPitchAngle = Math.asin(Math.max(-1, Math.min(1, shipForward.y)));
-        
-        // Apply pitch (up/down) with limits to prevent gimbal lock
-        const MAX_PITCH = Math.PI * 0.47;  // ~85 degrees
-        const proposedPitch = currentPitchAngle - currentRotationVel.p;
-        
-        if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
-            ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+                
+                const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+                const currentPitchAngle = Math.asin(Math.max(-1, Math.min(1, shipForward.y)));
+                const MAX_PITCH = Math.PI * 0.47;
+                const proposedPitch = currentPitchAngle - currentRotationVel.p;
+                
+                if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
+                    ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+                }
+
+                const gunOffset = new THREE.Vector3(0, 0, 15); 
+                const currentGunTipPos = gunOffset.clone().applyQuaternion(ship.quaternion).add(ship.position);
+
+                if (prevGunTipPos.lengthSq() === 0) prevGunTipPos.copy(currentGunTipPos);
+
+                if (dt > 0) {
+                    gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos);
+                }
+                prevGunTipPos.copy(currentGunTipPos);
+
+                if (pendingShot) {
+                    fireLaser();
+                    pendingShot = false;
+                }
+
+                if (isThrusting) {
+                    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+                    velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
+                    if (velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
+                    engineBeam.scale.set(1, 1.2 + Math.random() * 0.8, 1);
+                    engineLight.intensity = 3000;
+                } else {
+                    velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
+                    engineBeam.scale.set(0, 0, 0);
+                    engineLight.intensity = 0;
+                }
+                ship.position.add(velocityVec);
+
+                const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
+                camera.updateProjectionMatrix();
+
+                handleStarWrap();
+                handleLocalStars();
+                updateIndicators();
+                updateScope();
+                updateExplosions();
+
+                const dist = ship.position.distanceTo(camera.position);
+                if (dist > CONFIG.CAMERA_RADIUS) {
+                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
+                }
+                const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
+                camera.quaternion.slerp(targetQuat, 0.08);
+
+                if (shakeDuration > 0) {
+                    const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
+                    camera.position.x += offset; camera.position.y += offset;
+                    shakeDuration -= 0.016;
+                }
+            }
+
+            targets.forEach(t => {
+                t.userData.angle += t.userData.speed;
+                const offset = new THREE.Vector3(Math.cos(t.userData.angle) * t.userData.radius, 0, Math.sin(t.userData.angle) * t.userData.radius);
+                offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
+                t.position.copy(t.userData.center).add(offset);
+            });
+
+            handleBullets();
+            renderer.render(scene, camera);
         }
 
-        // 2. CALCULATE GUN TIP VELOCITY (The Fix)
-        // Define where the gun tip is relative to the ship (15 units forward)
-        const gunOffset = new THREE.Vector3(0, 0, 15); 
-        
-        // Calculate current world position of the gun tip
-        const currentGunTipPos = gunOffset.clone()
-            .applyQuaternion(ship.quaternion)
-            .add(ship.position);
+        function fireLaser() {
+            if (!ship || !gameActive) return;
+            const spawnPos = new THREE.Vector3(0, 0, 15).applyQuaternion(ship.quaternion).add(ship.position);
+            const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            const bulletSpeedVector = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
+            const finalVelocity = new THREE.Vector3().add(bulletSpeedVector).add(gunTipVelocity); 
 
-        // If this is the very first frame, just copy current to prev to avoid a huge spike
-        if (prevGunTipPos.lengthSq() === 0) {
-            prevGunTipPos.copy(currentGunTipPos);
+            const p = new THREE.Group();
+            p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
+            p.position.copy(spawnPos);
+            p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now() };
+            scene.add(p); bullets.push(p);
+            activeScopeBullet = p;
         }
 
-        // Calculate velocity: (Change in Position) / (Change in Time)
-        // We clone currentGunTipPos because sub() modifies the vector
-        if (dt > 0) {
-            gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos);
-			prevGunTipPos.copy(currentGunTipPos);
-        }
-
-        // Update prev for the next frame
-        prevGunTipPos.copy(currentGunTipPos);
-
-
-        // 3. FIRE LOGIC
-        if (pendingShot) {
-            fireLaser();
-            pendingShot = false;
-        }
-
-        // 4. MOVEMENT PHYSICS (Thrust/Drift)
-        if (isThrusting) {
-            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
-            if (velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
-            
-            // Visuals
-            engineBeam.scale.set(1, 1.2 + Math.random() * 0.8, 1);
-            engineLight.intensity = 3000;
-            if (Math.random() < 0.4) spawnTrail();
-        } else {
-            velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
-            engineBeam.scale.set(0, 0, 0);
-            engineLight.intensity = 0;
-        }
-        ship.position.add(velocityVec);
-
-
-        // 5. CAMERA & HUD UPDATES
-        const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
-        camera.updateProjectionMatrix();
-
-        handleStarWrap();
-        handleLocalStars();
-        updateIndicators();
-        updateScope();
-        updateExplosions();
-
-        const dist = ship.position.distanceTo(camera.position);
-        if (dist > CONFIG.CAMERA_RADIUS) {
-            camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
-        }
-        const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
-        camera.quaternion.slerp(targetQuat, 0.08);
-
-        if (shakeDuration > 0) {
-            const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
-            camera.position.x += offset;
-            camera.position.y += offset;
-            shakeDuration -= 0.016;
-        }
-    }
-
-    // 6. ENTITY UPDATES
-    targets.forEach(t => {
-        t.userData.angle += t.userData.speed;
-        const offset = new THREE.Vector3(Math.cos(t.userData.angle) * t.userData.radius, 0, Math.sin(t.userData.angle) * t.userData.radius);
-        offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
-        t.position.copy(t.userData.center).add(offset);
-    });
-
-    handleBullets();
-    renderer.render(scene, camera);
-}
-   function fireLaser() {
-    if (!ship || !gameActive) return;
-    const GUN_LENGTH = 15;
-    
-    // 1. Determine Spawn Point
-    const spawnPos = new THREE.Vector3(0, 0, GUN_LENGTH)
-        .applyQuaternion(ship.quaternion)
-        .add(ship.position);
-
-    // 2. Base Bullet Velocity (Forward)
-    const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-    const bulletSpeedVector = forwardDir.multiplyScalar(CONFIG.BULLET_SPEED);
-
-    // 3. Combine: Bullet Speed + The Gun Tip's Physical Momentum
-    // gunTipVelocity already includes the ship's movement (velocityVec) AND the rotational swing!
-    // Note: We multiply gunTipVelocity by a factor (e.g. 0.5 or 1.0) to tune how "heavy" the swing feels.
-    // 1.0 is physically accurate.
-    const finalVelocity = new THREE.Vector3()
-        .add(bulletSpeedVector)
-        .add(gunTipVelocity); 
-
-    
-    // 4. Create Bullet
-    const p = new THREE.Group();
-    p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
-    p.position.copy(spawnPos);
-    
-    // Store velocity and spawn time
-    p.userData = { 
-        velocity: finalVelocity, 
-        origin: spawnPos.clone(), 
-        spawn: Date.now(), 
-        trackingScope: true 
-    };
-    
-    scene.add(p); 
-    bullets.push(p);
-    
-    activeScopeBullet = p;
-}
         function spawnWave() {
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
                 const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 }));
                 const orbitRadius = 300 + Math.random() * 1100;
                 const orbitAngle = Math.random() * Math.PI * 2;
+                const direction = Math.random() < 0.5 ? 1 : -1;
+
                 t.position.set(center.x + Math.cos(orbitAngle) * orbitRadius, center.y + (Math.random()-0.5)*600, center.z + Math.sin(orbitAngle) * orbitRadius);
-                t.userData = { center: t.position.clone(), radius: orbitRadius, speed: (Math.random()*0.001)+0.00065, angle: orbitAngle, axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() };
+                t.userData = { 
+                    center: t.position.clone(), 
+                    radius: orbitRadius, 
+                    speed: ((Math.random()*0.001)+0.00065) * direction, 
+                    angle: orbitAngle, 
+                    axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() 
+                };
                 scene.add(t); targets.push(t);
             }
             updateHUD();
@@ -317,12 +269,7 @@
                 b.position.add(b.userData.velocity);
                 targets.forEach((t, ti) => {
                     if (b.position.distanceTo(t.position) < 28) {
-                        const dist = b.position.distanceTo(b.userData.origin);
-						const distBonus = Math.floor(dist / 10); // More points for distance
-						const speedBonus = Math.floor(t.userData.speed * 20000); // 13 to 33 extra points based on orbit speed
-
-						const totalAward = 10 + distBonus + speedBonus;
-						score += totalAward;
+						score += 10 + Math.floor(b.position.distanceTo(b.userData.origin) / 10);
                         createExplosion(t.position);
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
                         if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
@@ -399,40 +346,24 @@
             container.innerHTML = ''; if(!ship || !gameActive) return;
             const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
             
-            let inView = 0, inFront = 0, behind = 0;
-            
             targets.forEach(t => {
-                // Count targets by position
                 const vector = t.position.clone().project(camera);
                 const isBehind = vector.z > 1;
-                const inFrustum = frustum.containsPoint(t.position);
-                
-                if (inFrustum) inView++;
-                if (isBehind) behind++; else inFront++;
-                
-                if (inFrustum) return;  // In view - blue mesh shows it
+                if (frustum.containsPoint(t.position)) return;
                 
                 const div = document.createElement('div'); div.className = 'indicator';
-                
-                const margin = 5;
+                const margin = 10;
                 let x, y;
                 
                 if (isBehind) {
-                    // BLOOM FIX: Target behind camera - clamp to perimeter
-                    const dirX = vector.x;
-                    const dirY = -vector.y;
+                    const dirX = vector.x; const dirY = -vector.y;
                     const len = Math.sqrt(dirX * dirX + dirY * dirY);
-                    if (len < 0.001) {
-                        x = window.innerWidth / 2; y = window.innerHeight - margin;
-                    } else {
+                    if (len < 0.001) { x = window.innerWidth / 2; y = window.innerHeight - margin; }
+                    else {
                         const normX = dirX / len, normY = dirY / len;
                         const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2;
-                        const tRight = normX > 0 ? (halfW - margin) / (normX * halfW) : Infinity;
-                        const tLeft = normX < 0 ? -(halfW - margin) / (normX * halfW) : Infinity;
-                        const tTop = normY < 0 ? -(halfH - margin) / (normY * halfH) : Infinity;
-                        const tBottom = normY > 0 ? (halfH - margin) / (normY * halfH) : Infinity;
-                        const t = Math.min(tRight, tLeft, tTop, tBottom);
-                        x = halfW + normX * t * halfW; y = halfH + normY * t * halfH;
+                        const tLim = Math.min((halfW-margin)/Math.abs(normX), (halfH-margin)/Math.abs(normY));
+                        x = halfW + normX * tLim; y = halfH + normY * tLim;
                     }
                 } else {
                     x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2);
@@ -440,98 +371,57 @@
                     x = Math.max(margin, Math.min(window.innerWidth - margin, x));
                     y = Math.max(margin, Math.min(window.innerHeight - margin, y));
                 }
-                
-                div.style.left = `${x}px`;
-                div.style.top = `${y}px`;
-                container.appendChild(div);
+                div.style.left = `${x}px`; div.style.top = `${y}px`; container.appendChild(div);
             });
-            
         }
 
- function updateScope() {
-    if (!ship || !gameActive) return;
-    const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-    
-    let activeTarget = null;
-    let shortestDist = Infinity;
-    
-    // Scan for all targets within the scope range
-    for (let t of targets) {
-        // Calculate distance from the line of fire (ray-sphere distance)
-        const targetVec = t.position.clone().sub(ship.position);
-        const projection = targetVec.dot(shipForward);
-        
-        // Only consider targets in front of us and within range
-        if (projection > 0 && projection < CONFIG.SCOPE_RANGE) {
-            const closestPointOnRay = ship.position.clone().add(shipForward.clone().multiplyScalar(projection));
-            const lateralDist = closestPointOnRay.distanceTo(t.position);
+        function updateScope() {
+            if (!ship || !gameActive) return;
+            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
+            let activeTarget = null; let shortestDist = Infinity;
             
-            // If the target is within the scope's "vision" cone
-            if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE) {
-                if (projection < shortestDist) {
-                    shortestDist = projection;
-                    activeTarget = t;
+            for (let t of targets) {
+                const targetVec = t.position.clone().sub(ship.position);
+                const projection = targetVec.dot(shipForward);
+                if (projection > 0 && projection < CONFIG.SCOPE_RANGE) {
+                    const lateralDist = ship.position.clone().add(shipForward.clone().multiplyScalar(projection)).distanceTo(t.position);
+                    if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE && projection < shortestDist) {
+                        shortestDist = projection; activeTarget = t;
+                    }
                 }
             }
-        }
-    }
-    
-    // Determine if scope should be visible
-    const hasBullet = activeScopeBullet && bullets.includes(activeScopeBullet);
-    const showScope = activeTarget || hasBullet;
-
-    if (showScope) {
-        scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
-        scopeCamera.quaternion.copy(ship.quaternion); 
-        scopeCamera.rotateY(Math.PI);
-        
-        scopeRenderer.render(scene, scopeCamera);
-        
-        scopeCanvas.style.display = 'block'; 
-        document.getElementById('scopeCrosshair').style.display = 'block';
-        document.getElementById('scopeData').style.display = 'block';
-
-        const distEl = document.getElementById('scopeDist');
-        const spdEl = document.getElementById('scopeSpd');
-
-        if (activeTarget) {
-            const speedVal = Math.floor(activeTarget.userData.speed * 20000);
-            distEl.innerText = `DST: ${Math.floor(shortestDist)}m`;
-            spdEl.innerText = `SPD: ${speedVal}`;
-            // Visual feedback: solid red when locked on
-            distEl.style.color = '#ff0000';
-            spdEl.style.color = '#ff0000';
-        } else {
-            distEl.innerText = `DST: TRK`;
-            spdEl.innerText = `SPD: TRK`;
-            distEl.style.color = '#aa0000'; // Dimmer red when just tracking a bullet
-            spdEl.style.color = '#aa0000';
-        }
-
-        const lateralSpeed = new THREE.Vector3().subVectors(gunTipVelocity, velocityVec).length();
-        document.getElementById('scopeKick').innerText = `KCK: ${(lateralSpeed * 100).toFixed(1)}`;
-
-    } else {
-        scopeCanvas.style.display = 'none'; 
-        document.getElementById('scopeCrosshair').style.display = 'none';
-        document.getElementById('scopeData').style.display = 'none';
-    }
-} 
-        function onDeviceMove(e) {
-            if (!isInitialized) { 
-                phoneZero = { beta: e.beta, gamma: e.gamma, alpha: e.alpha }; 
-                isInitialized = true; 
-                return; 
-            }
             
+            const hasBullet = activeScopeBullet && bullets.includes(activeScopeBullet);
+            if (activeTarget || hasBullet) {
+                scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
+                scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
+                scopeRenderer.render(scene, scopeCamera);
+                scopeCanvas.style.display = 'block'; 
+                document.getElementById('scopeCrosshair').style.display = 'block';
+                document.getElementById('scopeData').style.display = 'block';
+
+                const distEl = document.getElementById('scopeDist');
+                const spdEl = document.getElementById('scopeSpd');
+                if (activeTarget) {
+                    distEl.innerText = `DST: ${Math.floor(shortestDist)}m`;
+                    spdEl.innerText = `SPD: ${Math.floor(Math.abs(activeTarget.userData.speed) * 20000)}`;
+                } else {
+                    distEl.innerText = `DST: TRK`; spdEl.innerText = `SPD: TRK`;
+                }
+            } else {
+                scopeCanvas.style.display = 'none'; 
+                document.getElementById('scopeCrosshair').style.display = 'none';
+                document.getElementById('scopeData').style.display = 'none';
+            }
+        } 
+
+        function onDeviceMove(e) {
+            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
             let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
             if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
             
-            // Detect if phone is lying down (flat) vs sitting up
-            // When beta is close to 0, phone is flat (lying down)
-            // When beta is 45-90, phone is upright (sitting up)
             const isLyingDown = Math.abs(e.beta) < 30;
-            const yawMultiplier = isLyingDown ? 1 : -1;  // Reverse yaw when lying down
+            const yawMultiplier = isLyingDown ? 1 : -1;
             
             const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
@@ -539,9 +429,16 @@
         }
 
         function startTimer() {
-            setInterval(() => {
-                if (timeLeft > 0 && gameActive) { timeLeft--; document.getElementById('timer').textContent = `${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`; }
-                else if (timeLeft <= 0) { gameActive = false; alert("Score: " + score); location.reload(); }
+            const timerInterval = setInterval(() => {
+                if (timeLeft > 0 && gameActive) { 
+                    timeLeft--; 
+                    document.getElementById('timer').textContent = `${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`; 
+                } else if (timeLeft <= 0 && gameActive) {
+                    gameActive = false;
+                    clearInterval(timerInterval);
+                    alert("Mission Complete! Score: " + score); 
+                    location.reload(); 
+                }
             }, 1000);
         }
 
@@ -567,11 +464,7 @@
         thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); }, { passive: false });
         thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); }, { passive: false });
         window.addEventListener('touchstart', (e) => { if (gameActive && !['thrustBtn', 'zeroBtn', 'startBtn'].includes(e.target.id)) pendingShot = true; });
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { 
-            e.preventDefault(); 
-            isInitialized = false; 
-            prevQuaternion.copy(ship.quaternion); 
-        });
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
     </script>
 </body>
 </html>
