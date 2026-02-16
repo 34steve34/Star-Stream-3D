@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.9.4</title>
+    <title>Star Stream 3D - v3.9.5</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.9.4</div>
+    <div id="version">v3.9.5</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -98,7 +98,6 @@
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
         let activeScopeBullet = null;  // Track bullet for scope persistence
-        let currentPitch = 0;  // Track accumulated pitch to prevent gimbal lock
 
         let orientationMode = 'upright';
         let pitchMultiplier = 1;
@@ -162,17 +161,19 @@
         // Apply yaw (left/right) freely
         ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
         
+        // Calculate current pitch angle relative to world up
+        const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+        const shipForwardFlat = new THREE.Vector3(shipForward.x, 0, shipForward.z).normalize();
+        const currentPitchAngle = Math.asin(Math.max(-1, Math.min(1, shipForward.y)));
+        
         // Apply pitch (up/down) with limits to prevent gimbal lock
         const MAX_PITCH = Math.PI * 0.47;  // ~85 degrees
-        const proposedPitch = currentPitch - currentRotationVel.p;
+        const proposedPitch = currentPitchAngle - currentRotationVel.p;
         
         if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
             ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
-            currentPitch = proposedPitch;
-        } else {
-            // Clamp at the limit
-            currentPitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, proposedPitch));
         }
+        // If at limit, just don't apply more rotation in that direction
 
         // 2. CALCULATE GUN TIP VELOCITY (The Fix)
         // Define where the gun tip is relative to the ship (15 units forward)
@@ -560,7 +561,6 @@
             e.preventDefault(); 
             isInitialized = false; 
             prevQuaternion.copy(ship.quaternion); 
-            currentPitch = 0;  // Reset pitch tracking when zeroing
         });
     </script>
 </body>
