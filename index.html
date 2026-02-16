@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.2.0</title>
+    <title>Star Stream 3D - v4.1.0</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
-        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; }
+        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px; }
 		#zeroBtn { position: absolute; top: 10px; left: 10px; padding: 10px; background: #222; color: #0f0; border: 1px solid #0f0; z-index: 30; font-size: 10px; cursor: pointer; border-radius: 5px; }
         #version { position: absolute; top: 10px; right: 10px; color: rgba(255, 120, 0, 0.7); font-size: 10px; z-index: 30; }
         #thrustBtn { position: absolute; bottom: 20px; right: 20px; width: 104px; height: 104px; background: rgba(255, 120, 0, 0.3); color: white; border: 2px solid #ff7800; border-radius: 50%; cursor: pointer; font-size: 14px; z-index: 20; display: none; -webkit-user-select: none; }
@@ -16,7 +16,18 @@
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
         
-        /* Scope UI: Moved to Top Right */
+        /* Splash Screen Info Panel */
+        #splashInfo {
+            background: rgba(0, 0, 0, 0.85); border: 2px solid #00E676; padding: 15px;
+            border-radius: 8px; width: 280px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.2);
+        }
+        #splashInfo h2 { margin: 0 0 10px 0; color: #fff; font-size: 18px; letter-spacing: 1px; }
+        .legend-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-size: 14px; }
+        .color-box { width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+        .legend-text { color: #ddd; flex-grow: 1; text-align: left; }
+        .legend-pts { color: #fff; font-weight: bold; }
+
+        /* Scope UI: Top Right */
         #scopeCanvas { 
             position: absolute; top: 50px; right: 20px; 
             width: 220px; height: 220px; border: 3px solid rgba(255, 0, 0, 0.8); 
@@ -34,7 +45,7 @@
             border-radius: 50%; z-index: 16; display: none; box-shadow: 0 0 8px #ff0000;
         }
         .indicator { position: absolute; width: 16px; height: 16px; background: radial-gradient(circle, #ff7800 0%, rgba(255,120,0,0) 80%); border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); border: 1px solid rgba(255,120,0,0.3); }
-        button#startBtn { padding: 15px 30px; font-size: 18px; background: #ff7800; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button#startBtn { padding: 15px 30px; font-size: 18px; background: #00E676; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 280px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.4); }
        
         /* High Score Results Screen */
         #results {
@@ -51,7 +62,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.2.0</div>
+    <div id="version">v4.1.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -59,7 +70,34 @@
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span> | TARGETS: <span id="targets">0</span></div>
     </div>
-    <div id="ui"><button id="startBtn">START MISSION</button></div>
+    
+    <div id="ui">
+        <div id="splashInfo">
+            <h2>TARGET INTEL</h2>
+            <div class="legend-row">
+                <div class="color-box" style="background: #00ff00; box-shadow: 0 0 8px #00ff00;"></div>
+                <span class="legend-text">Close Range</span>
+                <span class="legend-pts">LOW PTS</span>
+            </div>
+            <div class="legend-row">
+                <div class="color-box" style="background: #ffff00; box-shadow: 0 0 8px #ffff00;"></div>
+                <span class="legend-text">Mid Range</span>
+                <span class="legend-pts">MED PTS</span>
+            </div>
+            <div class="legend-row">
+                <div class="color-box" style="background: #ffaa00; box-shadow: 0 0 8px #ffaa00;"></div>
+                <span class="legend-text">Long Range</span>
+                <span class="legend-pts">HIGH PTS</span>
+            </div>
+            <div class="legend-row">
+                <div class="color-box" style="background: #ff00ff; box-shadow: 0 0 8px #ff00ff;"></div>
+                <span class="legend-text">Extreme Range</span>
+                <span class="legend-pts">MAX PTS</span>
+            </div>
+        </div>
+        <button id="startBtn">START MISSION</button>
+    </div>
+
     <div id="indicator-container"></div>
     <canvas id="scopeCanvas"></canvas>
     <canvas id="scopeCrosshair" width="220" height="220"></canvas>
@@ -236,17 +274,21 @@
                 offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
                 t.position.copy(t.userData.center).add(offset);
                 
-                // Dynamic Color Coding based on Distance (Point Value)
+                // Dynamic Glowing Colors based on Distance
                 if (ship) {
                     const targetDist = ship.position.distanceTo(t.position);
                     if (targetDist < 400) {
-                        t.material.color.setHex(0x00ffff); // Cyan (Lowest value)
-                    } else if (targetDist < 800) {
                         t.material.color.setHex(0x00ff00); // Green
-                    } else if (targetDist < 1200) {
+                        t.material.emissive.setHex(0x004400); // Strong glow
+                    } else if (targetDist < 800) {
                         t.material.color.setHex(0xffff00); // Yellow
+                        t.material.emissive.setHex(0x444400);
+                    } else if (targetDist < 1200) {
+                        t.material.color.setHex(0xffaa00); // Orange
+                        t.material.emissive.setHex(0x442200);
                     } else {
-                        t.material.color.setHex(0xff00ff); // Purple (Highest value)
+                        t.material.color.setHex(0xff00ff); // Hot Pink
+                        t.material.emissive.setHex(0x440044);
                     }
                 }
             });
@@ -273,7 +315,8 @@
         function spawnWave() {
             const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
             for (let i = 0; i < targetsInWave; i++) {
-                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x002222 }));
+                // Base material setup - color will be overridden in animate loop immediately
+                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x004400 }));
                 const orbitRadius = 300 + Math.random() * 1100;
                 const orbitAngle = Math.random() * Math.PI * 2;
                 const direction = Math.random() < 0.5 ? 1 : -1;
@@ -444,27 +487,19 @@
             currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * yawMultiplier;
         }
 
-        // --- NEW LOCAL STORAGE SCORING LOGIC ---
         function saveAndDisplayScores(currentScore) {
-            // Retrieve existing scores or set default
             let scores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
-            
-            // Add new score, sort descending, keep top 4
             scores.push(currentScore);
             scores.sort((a, b) => b - a);
             scores = scores.slice(0, 4);
-            
-            // Save back to local storage
             localStorage.setItem('starStreamHighScores', JSON.stringify(scores));
 
-            // Populate the UI
             document.getElementById('finalScore').innerText = currentScore;
             document.getElementById('hs1').innerText = scores[0];
             document.getElementById('hs2').innerText = scores[1];
             document.getElementById('hs3').innerText = scores[2];
             document.getElementById('hs4').innerText = scores[3];
 
-            // Show results screen, hide gameplay HUD
             document.getElementById('results').style.display = 'block';
             document.getElementById('hud').style.display = 'none';
             document.getElementById('thrustBtn').style.display = 'none';
@@ -486,7 +521,9 @@
         function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
 
         document.getElementById('startBtn').addEventListener('click', async function() {
-            this.style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
+            document.getElementById('ui').style.display = 'none'; 
+            document.getElementById('hud').style.display = 'block'; 
+            document.getElementById('thrustBtn').style.display = 'block';
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
             }
@@ -501,7 +538,6 @@
             });
         });
 
-        // Replay Button listener
         document.getElementById('replayBtn').addEventListener('click', () => location.reload());
 
         const thrustBtn = document.getElementById('thrustBtn');
