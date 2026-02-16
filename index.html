@@ -98,6 +98,7 @@
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
         let activeScopeBullet = null;  // Track bullet for scope persistence
+        let currentPitch = 0;  // Track accumulated pitch to prevent gimbal lock
 
         let orientationMode = 'upright';
         let pitchMultiplier = 1;
@@ -154,12 +155,24 @@
     const dt = clock.getDelta(); // Time since last frame in seconds
 
     if (ship && isInitialized && gameActive) {
-        // 1. APPLY ROTATION (User Input)
+        // 1. APPLY ROTATION (User Input) with pitch limiting
         const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
         const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
+        // Apply yaw (left/right) freely
         ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
-        ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+        
+        // Apply pitch (up/down) with limits to prevent gimbal lock
+        const MAX_PITCH = Math.PI * 0.47;  // ~85 degrees
+        const proposedPitch = currentPitch - currentRotationVel.p;
+        
+        if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
+            ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+            currentPitch = proposedPitch;
+        } else {
+            // Clamp at the limit
+            currentPitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, proposedPitch));
+        }
 
         // 2. CALCULATE GUN TIP VELOCITY (The Fix)
         // Define where the gun tip is relative to the ship (15 units forward)
@@ -543,7 +556,12 @@
         thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); }, { passive: false });
         thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); }, { passive: false });
         window.addEventListener('touchstart', (e) => { if (gameActive && !['thrustBtn', 'zeroBtn', 'startBtn'].includes(e.target.id)) pendingShot = true; });
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; prevQuaternion.copy(ship.quaternion); });
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            isInitialized = false; 
+            prevQuaternion.copy(ship.quaternion); 
+            currentPitch = 0;  // Reset pitch tracking when zeroing
+        });
     </script>
 </body>
 </html>
