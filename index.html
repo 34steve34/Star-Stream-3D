@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.9.8</title>
+    <title>Star Stream 3D - v3.9.9</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.9.8</div>
+    <div id="version">v3.9.9</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -154,7 +154,7 @@
     const dt = clock.getDelta(); // Time since last frame in seconds
 
     if (ship && isInitialized && gameActive) {
-        // 1. APPLY ROTATION (User Input) with pitch limiting and roll correction
+        // 1. APPLY ROTATION (User Input) with pitch limiting
         const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
         const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
@@ -171,26 +171,6 @@
         
         if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
             ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
-        }
-        
-        // ANTI-GIMBAL: Correct roll to keep ship upright
-        // Get ship's current up vector
-        const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion);
-        const worldUp = new THREE.Vector3(0, 1, 0);
-        
-        // Project ship's up onto the plane perpendicular to ship's forward
-        const shipUpProjected = shipUp.clone().sub(shipForward.clone().multiplyScalar(shipUp.dot(shipForward))).normalize();
-        const worldUpProjected = worldUp.clone().sub(shipForward.clone().multiplyScalar(worldUp.dot(shipForward))).normalize();
-        
-        // Calculate roll angle between projected vectors
-        const rollAngle = Math.atan2(
-            shipUpProjected.clone().cross(worldUpProjected).dot(shipForward),
-            shipUpProjected.dot(worldUpProjected)
-        );
-        
-        // Gradually correct roll to prevent barrel roll accumulation
-        if (Math.abs(rollAngle) > 0.01) {
-            ship.rotateOnWorldAxis(shipForward, -rollAngle * 0.15);  // Smooth correction
         }
 
         // 2. CALCULATE GUN TIP VELOCITY (The Fix)
@@ -594,5 +574,4 @@
         });
     </script>
 </body>
-
 </html>
