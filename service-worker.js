@@ -1,5 +1,6 @@
-// Star Stream PWA - VERSION 4.1.0 - 2026-02-16
+// Star Stream PWA - VERSION 4.2.0 - 2026-02-16
 // gemini fixing yaw and scope
+// 4.2.0 gemini moving scope; color coding target by distance; adding top scores
 // kiro gave up on gimbal lock 4.0.0 is the fix YAW in both playing positions
 //  kiro trying to fix gimbal lock .4 and .5
 //  .3 correct the lying position gameplay YAW
@@ -13,7 +14,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v4.1.0';
+const CACHE_NAME = 'star-stream-3D-v4.2.0';
 const urlsToCache = [
   './',
   './index.html',
