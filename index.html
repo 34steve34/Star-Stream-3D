@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v3.9.9</title>
+    <title>Star Stream 3D - v4.0.0</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v3.9.9</div>
+    <div id="version">v4.0.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -531,7 +531,7 @@
             // When beta is close to 0, phone is flat (lying down)
             // When beta is 45-90, phone is upright (sitting up)
             const isLyingDown = Math.abs(e.beta) < 30;
-            const yawMultiplier = isLyingDown ? -1 : 1;  // Reverse yaw when lying down
+            const yawMultiplier = isLyingDown ? 1 : -1;  // Reverse yaw when lying down
             
             const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
             currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
