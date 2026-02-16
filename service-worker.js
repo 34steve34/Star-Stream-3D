@@ -1,4 +1,4 @@
-// Star Stream PWA - VERSION 3.9.3 - 2026-02-13
+// Star Stream PWA - VERSION 3.9.4 - 2026-02-16
 //  .3 correct the lying position gameplay YAW
 //  .2 fix manifest to for app loading 
 // v3.9.1; updated scope information
@@ -10,7 +10,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v3.9.3';
+const CACHE_NAME = 'star-stream-3D-v3.9.4';
 const urlsToCache = [
   './',
   './index.html',
