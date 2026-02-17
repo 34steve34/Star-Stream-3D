@@ -1,5 +1,5 @@
-// Star Stream PWA - VERSION 4.3.0 - 2026-02-16
-// gemini 4.3.0 added back random color explosion, added top single hit scores
+// Star Stream PWA - VERSION 4.4.0 - 2026-02-16
+// gemini 4.4.0 added back random color explosion, added top single hit scores
 // gemini fixing yaw and scope
 // 4.2.0 gemini moving scope; color coding target by distance; adding top scores
 // kiro gave up on gimbal lock 4.0.0 is the fix YAW in both playing positions
