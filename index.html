@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.0</title>
+    <title>Star Stream 3D - v4.7.1</title>
 	<link rel="manifest" href="manifest.json">
-    
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; touch-action: none; }
         #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 15px; }
@@ -15,145 +14,47 @@
         #thrustBtn.active { background: rgba(255, 120, 0, 0.7); }
         #hud { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); text-align: center; color: #0ff; font-size: 16px; display: none; width: 100%; pointer-events: none; }
         #timer { color: #ff00ff; font-weight: bold; font-size: 20px; }
-        
-        #splashInfo {
-            background: rgba(0, 0, 0, 0.85); border: 2px solid #00E676; padding: 15px;
-            border-radius: 8px; width: 280px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.2);
-        }
-        #splashInfo h2 { margin: 0 0 10px 0; color: #fff; font-size: 18px; letter-spacing: 1px; }
-        .legend-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-size: 14px; }
-        .color-box { width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-right: 10px; }
-        .legend-text { color: #ddd; flex-grow: 1; text-align: left; }
-        .legend-pts { color: #fff; font-weight: bold; }
-
-        #scopeCanvas { 
-            position: absolute; top: 50px; right: 20px; 
-            width: 220px; height: 220px; border: 3px solid rgba(255, 0, 0, 0.8); 
-            border-radius: 50%; z-index: 15; display: none;
-            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); background: #000;
-        }
-        #scopeCrosshair {
-            position: absolute; top: 50px; right: 20px;
-            width: 220px; height: 220px; z-index: 17; display: none; pointer-events: none;
-        }
-        
-        #scopeReticle {
-            position: absolute; bottom: 130px; left: 50%; transform: translate(-50%, -50%);
-            width: 6px; height: 6px; background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%);
-            border-radius: 50%; z-index: 16; display: none; box-shadow: 0 0 8px #ff0000;
-        }
-
-        #pointPop {
-            position: absolute;
-            top: 150px; 
-            right: 280px;
-            color: #ffaa00;
-            font-size: 28px;
-            font-weight: bold;
-            text-shadow: 0 0 15px #ffaa00;
-            opacity: 0;
-            z-index: 50;
-            pointer-events: none;
-            transition: opacity 0.2s ease-out;
-        }
-
-        .indicator { 
-            position: absolute; 
-            border-radius: 50%; 
-            pointer-events: none; 
-            z-index: 5; 
-            transform: translate(-50%, -50%); 
-        }
-
-        button#startBtn { padding: 15px 30px; font-size: 18px; background: #00E676; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 280px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.4); }
-       
-        #results {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; display: none; background: rgba(0,0,0,0.95); padding: 20px 30px; 
-            border: 2px solid #00E676; z-index: 110; box-shadow: 0 0 30px rgba(0,230,118,0.3);
-            width: 85%; max-width: 600px;
-            border-radius: 10px;
-        }
+        #scopeCanvas { position: absolute; top: 50px; right: 20px; width: 220px; height: 220px; border: 3px solid rgba(255, 0, 0, 0.8); border-radius: 50%; z-index: 15; display: none; box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); background: #000; }
+        #scopeCrosshair { position: absolute; top: 50px; right: 20px; width: 220px; height: 220px; z-index: 17; display: none; pointer-events: none; }
+        #scopeReticle { position: absolute; bottom: 130px; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; background: radial-gradient(circle, #ff0000 0%, rgba(255, 0, 0, 0.8) 50%, rgba(255, 0, 0, 0) 100%); border-radius: 50%; z-index: 16; display: none; box-shadow: 0 0 8px #ff0000; }
+        #pointPop { position: absolute; top: 150px; right: 280px; color: #ffaa00; font-size: 28px; font-weight: bold; text-shadow: 0 0 15px #ffaa00; opacity: 0; z-index: 50; pointer-events: none; transition: opacity 0.2s ease-out; }
+        .indicator { position: absolute; border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); }
+        #results { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; background: rgba(0,0,0,0.95); padding: 20px 30px; border: 2px solid #00E676; z-index: 110; box-shadow: 0 0 30px rgba(0,230,118,0.3); width: 85%; max-width: 600px; border-radius: 10px; }
         #results h1 { color: #fff; font-size: 24px; margin: 0 0 15px 0; letter-spacing: 2px; }
-        
-        /* New Current Run Stats Layout */
-        .current-stats-container {
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            background: rgba(255,255,255,0.05);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
+        .current-stats-container { display: flex; justify-content: space-around; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 20px; }
         .stat-box { display: flex; flex-direction: column; align-items: center; }
         .stat-label { font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; }
         .stat-value { font-size: 48px; font-weight: bold; line-height: 1; }
-        
         .score-green { color: #00E676; text-shadow: 0 0 15px rgba(0,230,118,0.5); }
         .score-orange { color: #ffaa00; text-shadow: 0 0 15px rgba(255,170,0,0.5); }
-        
-        .leaderboards-container {
-            display: flex; justify-content: space-between; gap: 30px; margin-bottom: 15px;
-        }
+        .leaderboards-container { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 15px; }
         .leaderboard-col { flex: 1; }
-        
         .score-section-title { font-size: 16px; font-weight: bold; color: #fff; text-align: center; border-bottom: 2px solid #00E676; padding-bottom: 5px; margin-bottom: 10px; }
         .score-list { text-align: left; color: #fff; font-size: 16px; }
         .score-row { display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(0, 230, 118, 0.4); padding: 6px 0; }
-        .score-row:last-child { border-bottom: none; }
-        
-        #replayBtn { padding: 12px 20px; font-size: 18px; cursor: pointer; background: #00E676; color: #000; border: none; border-radius: 5px; font-weight: bold; width: 100%; text-transform: uppercase; box-shadow: 0 0 10px rgba(0,230,118,0.4); }
-
+        #startBtn { padding: 15px 30px; font-size: 18px; background: #00E676; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 280px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.4); }
+        #replayBtn { padding: 12px 20px; font-size: 18px; cursor: pointer; background: #00E676; color: #000; border: none; border-radius: 5px; font-weight: bold; width: 100%; text-transform: uppercase; }
     </style>
 </head>
 <body>
-    <div id="version">v4.7.0</div>
+    <div id="version">v4.7.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
-    
     <div id="hud">
         <div id="timer">03:00</div>
         <div>SCORE: <span id="score">0</span></div>
         <div>WAVE: <span id="wave">1</span> | TARGETS: <span id="targets">0</span></div>
     </div>
-    
     <div id="ui">
-        <div id="splashInfo">
-            <h2>TARGET INTEL</h2>
-            <div class="legend-row">
-                <div class="color-box" style="background: #00ff00; box-shadow: 0 0 8px #00ff00;"></div>
-                <span class="legend-text">Close Range</span>
-                <span class="legend-pts">LOW PTS</span>
-            </div>
-            <div class="legend-row">
-                <div class="color-box" style="background: #ffff00; box-shadow: 0 0 8px #ffff00;"></div>
-                <span class="legend-text">Mid Range</span>
-                <span class="legend-pts">MED PTS</span>
-            </div>
-            <div class="legend-row">
-                <div class="color-box" style="background: #ffaa00; box-shadow: 0 0 8px #ffaa00;"></div>
-                <span class="legend-text">Long Range</span>
-                <span class="legend-pts">HIGH PTS</span>
-            </div>
-            <div class="legend-row">
-                <div class="color-box" style="background: #ff00ff; box-shadow: 0 0 8px #ff00ff;"></div>
-                <span class="legend-text">Extreme Range</span>
-                <span class="legend-pts">MAX PTS</span>
-            </div>
-        </div>
         <button id="startBtn">START MISSION</button>
     </div>
-
     <div id="indicator-container"></div>
     <canvas id="scopeCanvas"></canvas>
     <canvas id="scopeCrosshair" width="220" height="220"></canvas>
     <div id="scopeReticle"></div>
     <div id="pointPop">+0</div>
-
     <div id="results">
         <h1>MISSION COMPLETE</h1>
-        
         <div class="current-stats-container">
             <div class="stat-box">
                 <div class="stat-label score-green">YOUR SCORE</div>
@@ -164,42 +65,22 @@
                 <div class="stat-value score-orange" id="currentBestShotUI">0</div>
             </div>
         </div>
-        
         <div class="leaderboards-container">
             <div class="leaderboard-col">
                 <div class="score-section-title">TOP 4 TOTAL SCORES</div>
-                <div class="score-list">
-                    <div class="score-row"><span>1.</span><span id="ts1">0</span></div>
-                    <div class="score-row"><span>2.</span><span id="ts2">0</span></div>
-                    <div class="score-row"><span>3.</span><span id="ts3">0</span></div>
-                    <div class="score-row"><span>4.</span><span id="ts4">0</span></div>
-                </div>
+                <div class="score-list" id="totalLeaderboard"></div>
             </div>
             <div class="leaderboard-col">
                 <div class="score-section-title">TOP 4 BEST SHOTS</div>
-                <div class="score-list">
-                    <div class="score-row"><span>1.</span><span id="bs1">0</span></div>
-                    <div class="score-row"><span>2.</span><span id="bs2">0</span></div>
-                    <div class="score-row"><span>3.</span><span id="bs3">0</span></div>
-                    <div class="score-row"><span>4.</span><span id="bs4">0</span></div>
-                </div>
+                <div class="score-list" id="shotsLeaderboard"></div>
             </div>
         </div>
         <button id="replayBtn">PLAY AGAIN</button>
     </div>
-	
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "./libs/three.module.js",
-                "three/addons/": "./libs/"
-            }
-        }
-    </script>
 
     <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/GLTFLoader.js';
 
         const CONFIG = {
             MAX_VELOCITY: 1.5, DRIFT_INERTIA: 0.95, ACCEL_FORCE: 0.08, BULLET_SPEED: 9,
@@ -210,432 +91,120 @@
             SCOPE_HIT_DISTANCE: 150, EXPLOSION_SHARDS: 20, SHAKE_INTENSITY: 2.0
         };
 
-        let scene, camera, renderer, ship, engineBeam, engineLight;
+        let scene, camera, renderer, ship, engineBeam, engineLight, audioCtx;
 		const clock = new THREE.Clock();
-		let gunTipVelocity = new THREE.Vector3();
-		let prevGunTipPos = new THREE.Vector3();
-        let scopeCamera, scopeRenderer, scopeCanvas, scopeReticle;
-        let starFields = [], localStars, targets = [], bullets = [], trails = [], explosions = [];
+        let scopeCamera, scopeRenderer, starFields = [], localStars, targets = [], bullets = [], explosions = [];
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, pendingShot = false;
-        let velocityVec = new THREE.Vector3(0, 0, 0);
-        let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
-        let shakeDuration = 0;
-        let activeScopeBullet = null;
-        let popTimeout = null;
-        let currentBestShot = 0; // Tracks the best shot for the current game
-        
-        let audioCtx; // Web Audio API Context
-
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(CONFIG.BASE_FOV, window.innerWidth / window.innerHeight, 1, 30000);
-            camera.position.set(0, 10, 40);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.body.appendChild(renderer.domElement);
-			clock.start();
-            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-            sun.position.set(10, 20, 10);
-            scene.add(sun);
-            initScope(); 
-            initStars(); 
-            initLocalStars(); 
-            spawnWave(); 
-            startTimer(); 
-            animate();
-        }
-
-        // --- DYNAMIC AUDIO GENERATOR ---
-        function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
+        let velocityVec = new THREE.Vector3(), gunTipVelocity = new THREE.Vector3(), prevGunTipPos = new THREE.Vector3();
+        let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME, currentBestShot = 0;
 
         function playExplosionSound() {
             if (!audioCtx) return;
             const t = audioCtx.currentTime;
-            
-            // Create audio nodes
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'sine'; // Sine wave is perfect for clean, deep bass
-            
-            // The "Drop": Start at 150Hz and sweep down to 20Hz rapidly
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'sine';
             osc.frequency.setValueAtTime(150, t);
-            osc.frequency.exponentialRampToValueAtTime(20, t + 0.4);
-            
-            // The "Envelope": Start loud and fade out
+            osc.frequency.exponentialRampToValueAtTime(20, t + 0.7);
             gain.gain.setValueAtTime(1.5, t);
-            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-            
-            // Connect and play
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start(t);
-            osc.stop(t + 0.5);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(t); osc.stop(t + 0.8);
         }
 
-        function initScope() {
-            scopeCanvas = document.getElementById('scopeCanvas');
-            scopeReticle = document.getElementById('scopeReticle');
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(CONFIG.BASE_FOV, window.innerWidth / window.innerHeight, 1, 30000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(10, 20, 10); scene.add(sun);
+            
+            // Scope setup
             scopeCamera = new THREE.PerspectiveCamera(CONFIG.SCOPE_FOV, 1, 1, 3000);
-            scopeRenderer = new THREE.WebGLRenderer({ canvas: scopeCanvas, antialias: true });
-            scopeRenderer.setSize(220, 220);
-            scopeRenderer.setClearColor(0x000000, 1.0);
-            
-            const crosshairCanvas = document.getElementById('scopeCrosshair');
-            const ctx = crosshairCanvas.getContext('2d');
-            const centerX = 110, centerY = 110, lineLength = 55, gap = 8;
-            
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)'; 
-            ctx.lineWidth = 1.2;
-            ctx.beginPath(); ctx.moveTo(centerX, centerY - gap); ctx.lineTo(centerX, centerY - gap - lineLength); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(centerX, centerY + gap); ctx.lineTo(centerX, centerY + gap + lineLength); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(centerX - gap, centerY); ctx.lineTo(centerX - gap - lineLength, centerY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(centerX + gap, centerY); ctx.lineTo(centerX + gap + lineLength, centerY); ctx.stroke();
-            
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.95)'; 
-            ctx.beginPath(); ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2); ctx.fill();
+            scopeRenderer = new THREE.WebGLRenderer({ canvas: document.getElementById('scopeCanvas'), antialias: true });
+            scopeRenderer.setSize(220, 220); scopeRenderer.setClearColor(0x000000, 1.0);
+
+            // Crosshair drawing
+            const ctx = document.getElementById('scopeCrosshair').getContext('2d');
+            ctx.strokeStyle = 'red'; ctx.lineWidth = 1.2;
+            [0, 90, 180, 270].forEach(a => {
+                ctx.save(); ctx.translate(110, 110); ctx.rotate(a * Math.PI / 180);
+                ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 63); ctx.stroke(); ctx.restore();
+            });
+
+            spawnWave(); animate();
         }
 
-       function animate() {
+        function animate() {
             if (!gameActive) return;
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
-            
+
             if (ship && isInitialized) {
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-                ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
+                const camQuat = camera.quaternion.clone();
+                ship.rotateOnWorldAxis(new THREE.Vector3(0,1,0).applyQuaternion(camQuat), -currentRotationVel.y);
+                ship.rotateOnWorldAxis(new THREE.Vector3(1,0,0).applyQuaternion(camQuat), -currentRotationVel.p);
                 
-                const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
-                const currentPitchAngle = Math.asin(Math.max(-1, Math.min(1, shipForward.y)));
-                const MAX_PITCH = Math.PI * 0.47;
-                const proposedPitch = currentPitchAngle - currentRotationVel.p;
-                
-                if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
-                    ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+                const currentGunTip = new THREE.Vector3(0,0,15).applyQuaternion(ship.quaternion).add(ship.position);
+                if (dt > 0) gunTipVelocity.subVectors(currentGunTip, prevGunTipPos);
+                prevGunTipPos.copy(currentGunTip);
+
+                if (pendingShot) {
+                    const b = new THREE.Group();
+                    b.add(new THREE.Mesh(new THREE.SphereGeometry(2), new THREE.MeshBasicMaterial({color:0xff00ff})));
+                    b.position.copy(currentGunTip);
+                    b.userData = { vel: new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).multiplyScalar(CONFIG.BULLET_SPEED).add(gunTipVelocity), spawn: Date.now(), origin: currentGunTip.clone() };
+                    scene.add(b); bullets.push(b); pendingShot = false;
                 }
-                
-                const currentGunTipPos = new THREE.Vector3(0, 0, 15).applyQuaternion(ship.quaternion).add(ship.position);
-                if (prevGunTipPos.lengthSq() === 0) prevGunTipPos.copy(currentGunTipPos);
-                if (dt > 0) gunTipVelocity.subVectors(currentGunTipPos, prevGunTipPos);
-                prevGunTipPos.copy(currentGunTipPos);
-                
-                if (pendingShot) { 
-                    fireLaser(); 
-                    pendingShot = false; 
-                }
-                
+
                 if (isThrusting) {
-                    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-                    velocityVec.add(dir.multiplyScalar(CONFIG.ACCEL_FORCE));
+                    velocityVec.add(new THREE.Vector3(0,0,1).applyQuaternion(ship.quaternion).multiplyScalar(CONFIG.ACCEL_FORCE));
                     if (velocityVec.length() > CONFIG.MAX_VELOCITY) velocityVec.setLength(CONFIG.MAX_VELOCITY);
-                    engineBeam.scale.set(1, 1.2 + Math.random() * 0.8, 1); 
-                    engineLight.intensity = 3000;
-                } else {
-                    velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA);
-                    engineBeam.scale.set(0, 0, 0); 
-                    engineLight.intensity = 0;
-                }
+                } else { velocityVec.multiplyScalar(CONFIG.DRIFT_INERTIA); }
                 ship.position.add(velocityVec);
-                
-                const targetFov = CONFIG.BASE_FOV + (velocityVec.length() / CONFIG.MAX_VELOCITY * CONFIG.MAX_FOV_BOOST);
-                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
-                camera.updateProjectionMatrix();
-                
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
-                
-                const dist = ship.position.distanceTo(camera.position);
-                if (dist > CONFIG.CAMERA_RADIUS) {
-                    camera.position.add(new THREE.Vector3().subVectors(ship.position, camera.position).normalize().multiplyScalar((dist - CONFIG.CAMERA_RADIUS) * 0.02));
-                }
-                
-                const targetQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(camera.position, ship.position, new THREE.Vector3(0, 1, 0).applyQuaternion(ship.quaternion)));
-                camera.quaternion.slerp(targetQuat, 0.08);
-                
-                if (shakeDuration > 0) {
-                    const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
-                    camera.position.x += offset; camera.position.y += offset; 
-                    shakeDuration -= 0.016;
-                }
+                camera.position.lerp(ship.position.clone().add(new THREE.Vector3(0,10,40).applyQuaternion(ship.quaternion)), 0.1);
+                camera.lookAt(ship.position);
             }
-            
+
             targets.forEach(t => {
                 t.userData.angle += t.userData.speed;
-                const offset = new THREE.Vector3(Math.cos(t.userData.angle) * t.userData.radius, 0, Math.sin(t.userData.angle) * t.userData.radius);
-                offset.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.userData.axis));
-                t.position.copy(t.userData.center).add(offset);
-                
-                if (ship) {
-                    const targetDist = ship.position.distanceTo(t.position);
-                    if (targetDist < 400) { t.material.color.setHex(0x00ff00); t.material.emissive.setHex(0x004400); } 
-                    else if (targetDist < 800) { t.material.color.setHex(0xffff00); t.material.emissive.setHex(0x444400); } 
-                    else if (targetDist < 1200) { t.material.color.setHex(0xffaa00); t.material.emissive.setHex(0x442200); } 
-                    else { t.material.color.setHex(0xff00ff); t.material.emissive.setHex(0x440044); }
-                }
+                t.position.copy(t.userData.center).add(new THREE.Vector3(Math.cos(t.userData.angle)*t.userData.radius, 0, Math.sin(t.userData.angle)*t.userData.radius).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), t.userData.axis)));
             });
-            
-            handleBullets(); renderer.render(scene, camera);
-        }
 
-        function fireLaser() {
-            if (!ship || !gameActive) return;
-            const spawnPos = new THREE.Vector3(0, 0, 15).applyQuaternion(ship.quaternion).add(ship.position);
-            const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            const finalVelocity = new THREE.Vector3().add(forwardDir.multiplyScalar(CONFIG.BULLET_SPEED)).add(gunTipVelocity); 
-            
-            const p = new THREE.Group();
-            p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
-            p.position.copy(spawnPos); 
-            p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now() };
-            scene.add(p); bullets.push(p); activeScopeBullet = p;
+            bullets.forEach((b, i) => {
+                b.position.add(b.userData.vel);
+                targets.forEach((t, j) => {
+                    if (b.position.distanceTo(t.position) < 30) {
+                        const pts = 10 + Math.floor(b.position.distanceTo(b.userData.origin)/10);
+                        score += pts; if(pts > currentBestShot) currentBestShot = pts;
+                        playExplosionSound(); scene.remove(t); targets.splice(j,1); scene.remove(b); bullets.splice(i,1);
+                        if(targets.length === 0) spawnWave();
+                    }
+                });
+            });
+            renderer.render(scene, camera);
         }
 
         function spawnWave() {
-            const center = ship ? ship.position : new THREE.Vector3(0,0,-100);
-            for (let i = 0; i < targetsInWave; i++) {
-                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 0), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x004400 }));
-                const orbitRadius = 300 + Math.random() * 1100; 
-                const orbitAngle = Math.random() * Math.PI * 2;
-                t.position.set(center.x + Math.cos(orbitAngle) * orbitRadius, center.y + (Math.random()-0.5)*600, center.z + Math.sin(orbitAngle) * orbitRadius);
-                t.userData = { 
-                    center: t.position.clone(), radius: orbitRadius, 
-                    speed: ((Math.random()*0.001)+0.00065) * (Math.random() < 0.5 ? 1 : -1), 
-                    angle: orbitAngle, axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() 
-                };
+            for(let i=0; i<targetsInWave; i++) {
+                const t = new THREE.Mesh(new THREE.IcosahedronGeometry(15), new THREE.MeshStandardMaterial({color:0x00ff00}));
+                t.userData = { center: new THREE.Vector3((Math.random()-0.5)*2000, (Math.random()-0.5)*1000, -1000), radius: 300+Math.random()*1100, speed: 0.001, angle: Math.random()*Math.PI*2, axis: new THREE.Vector3(Math.random(),1,Math.random()).normalize() };
                 scene.add(t); targets.push(t);
             }
-            updateHUD();
-        }
-        
-        function showPointPop(pts) {
-            const popEl = document.getElementById('pointPop'); popEl.innerText = `+${pts}`; popEl.style.opacity = 1;
-            clearTimeout(popTimeout); popTimeout = setTimeout(() => { popEl.style.opacity = 0; }, 600);
-        }
-
-        function updateBestShots(points) {
-            let bestShots = JSON.parse(localStorage.getItem('starStreamBestShots')) || [0, 0, 0, 0];
-            if (points > bestShots[3]) { 
-                bestShots.push(points); bestShots.sort((a, b) => b - a); bestShots = bestShots.slice(0, 4); 
-                localStorage.setItem('starStreamBestShots', JSON.stringify(bestShots)); 
-            }
-        }
-
-        function handleBullets() {
-            bullets.forEach((b, bi) => {
-                b.position.add(b.userData.velocity);
-                targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 28) {
-                        const earnedPoints = 10 + Math.floor(b.position.distanceTo(b.userData.origin) / 10);
-						score += earnedPoints; 
-                        
-                        // Track Best Shot for THIS game
-                        if (earnedPoints > currentBestShot) {
-                            currentBestShot = earnedPoints;
-                        }
-                        
-                        showPointPop(earnedPoints); 
-                        updateBestShots(earnedPoints); 
-                        playExplosionSound(); // TRIGGERS THE AUDIO BOOM
-                        createExplosion(t.position);
-                        
-                        scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
-                        if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
-                        updateHUD();
-                    }
-                });
-                if (Date.now() - b.userData.spawn > 5000) { scene.remove(b); bullets.splice(bi, 1); }
-            });
-        }
-
-        function createExplosion(pos) {
-            shakeDuration = 0.25;
-            for (let i = 0; i < CONFIG.EXPLOSION_SHARDS; i++) {
-                const randomColor = new THREE.Color().setHSL(Math.random(), 1.0, 0.5);
-                const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random()*8+4), new THREE.MeshBasicMaterial({ color: randomColor, transparent: true, opacity: 1 }));
-                shard.position.copy(pos); 
-                shard.userData = { velocity: new THREE.Vector3((Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*15), life: 1.0 };
-                scene.add(shard); explosions.push(shard);
-            }
-        }
-
-        function updateExplosions() {
-            for (let i = explosions.length - 1; i >= 0; i--) {
-                const s = explosions[i]; s.position.add(s.userData.velocity); s.userData.life -= 0.02; s.material.opacity = s.userData.life;
-                if (s.userData.life <= 0) { scene.remove(s); explosions.splice(i, 1); }
-            }
-        }
-
-        function handleStarWrap() {
-            starFields.forEach(field => {
-                const diff = new THREE.Vector3().subVectors(field.position, ship.position); const s = CONFIG.SECTOR_SIZE;
-                if (Math.abs(diff.x) > s * 1.5) field.position.x -= Math.sign(diff.x) * s * 3;
-                if (Math.abs(diff.y) > s * 1.5) field.position.y -= Math.sign(diff.y) * s * 3;
-                if (Math.abs(diff.z) > s * 1.5) field.position.z -= Math.sign(diff.z) * s * 3;
-            });
-        }
-
-        function handleLocalStars() {
-            if(!localStars || !ship) return;
-            localStars.position.copy(ship.position);
-            const positions = localStars.geometry.attributes.position.array; const range = CONFIG.LOCAL_STAR_RANGE;
-            for(let i=0; i<positions.length; i+=3) {
-                if(positions[i+2] > range/2) positions[i+2] -= range; if(positions[i+2] < -range/2) positions[i+2] += range;
-                if(positions[i] > range/2) positions[i] -= range; if(positions[i] < -range/2) positions[i] += range;
-                if(positions[i+1] > range/2) positions[i+1] -= range; if(positions[i+1] < -range/2) positions[i+1] += range;
-            }
-            localStars.geometry.attributes.position.needsUpdate = true;
-        }
-
-        function initStars() {
-            const geo = new THREE.BufferGeometry(); const pos = new Float32Array(250 * 3);
-            for(let i=0; i<250*3; i++) pos[i] = (Math.random()-0.5) * CONFIG.SECTOR_SIZE;
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true, opacity: 0.8 });
-            for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) for(let z=-1; z<=1; z++) {
-                const p = new THREE.Points(geo, mat); p.position.set(x*CONFIG.SECTOR_SIZE, y*CONFIG.SECTOR_SIZE, z*CONFIG.SECTOR_SIZE);
-                scene.add(p); starFields.push(p);
-            }
-        }
-
-        function initLocalStars() {
-            const geo = new THREE.BufferGeometry(); const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
-            for(let i=0; i<CONFIG.LOCAL_STAR_COUNT * 3; i++) pos[i] = (Math.random()-0.5) * CONFIG.LOCAL_STAR_RANGE;
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            localStars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.7 }));
-            scene.add(localStars);
-        }
-
-        function updateIndicators() {
-            const container = document.getElementById('indicator-container');
-            container.innerHTML = ''; if(!ship || !gameActive) return;
-            
-            const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-            targets.forEach(t => {
-                const vector = t.position.clone().project(camera);
-                if (frustum.containsPoint(t.position)) return;
-                
-                const div = document.createElement('div'); div.className = 'indicator';
-                
-                const dist = ship.position.distanceTo(t.position);
-                const size = Math.max(10, Math.min(40, 40 - (dist / 2000) * 30));
-                div.style.width = `${size}px`; div.style.height = `${size}px`;
-                const hexColor = t.material.color.getHexString();
-                div.style.background = `radial-gradient(circle, #${hexColor} 0%, rgba(0,0,0,0) 80%)`;
-                div.style.border = `1px solid #${hexColor}`;
-                
-                const margin = 10; let x, y;
-                
-                if (vector.z > 1) { 
-                    const dirX = vector.x; const dirY = -vector.y; const len = Math.sqrt(dirX * dirX + dirY * dirY);
-                    if (len < 0.001) { x = window.innerWidth / 2; y = window.innerHeight - margin; }
-                    else { const normX = dirX / len, normY = dirY / len; const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2; const tLim = Math.min((halfW-margin)/Math.abs(normX), (halfH-margin)/Math.abs(normY)); x = halfW + normX * tLim; y = halfH + normY * tLim; }
-                } else {
-                    x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2); y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
-                    x = Math.max(margin, Math.min(window.innerWidth - margin, x)); y = Math.max(margin, Math.min(window.innerHeight - margin, y));
-                }
-                div.style.left = `${x}px`; div.style.top = `${y}px`; container.appendChild(div);
-            });
-        }
-
-        function updateScope() {
-            if (!ship || !gameActive) return;
-            const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            let activeTarget = null; let shortestDist = Infinity;
-            
-            for (let t of targets) {
-                const targetVec = t.position.clone().sub(ship.position); const projection = targetVec.dot(shipForward);
-                if (projection > 0 && projection < CONFIG.SCOPE_RANGE) {
-                    const lateralDist = ship.position.clone().add(shipForward.clone().multiplyScalar(projection)).distanceTo(t.position);
-                    if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE && projection < shortestDist) { shortestDist = projection; activeTarget = t; }
-                }
-            }
-            
-            if (activeTarget || (activeScopeBullet && bullets.includes(activeScopeBullet))) {
-                scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
-                scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
-                scopeRenderer.render(scene, scopeCamera); scopeCanvas.style.display = 'block'; document.getElementById('scopeCrosshair').style.display = 'block';
-            } else { scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none'; }
-        } 
-
-        function onDeviceMove(e) {
-            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
-            let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
-            if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
-            const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
-            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * (Math.abs(e.beta) < 30 ? 1 : -1);
-        }
-
-        function displayEndScreen() {
-            let topScores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
-            topScores.push(score); topScores.sort((a, b) => b - a); topScores = topScores.slice(0, 4); localStorage.setItem('starStreamHighScores', JSON.stringify(topScores));
-            
-            let bestShots = JSON.parse(localStorage.getItem('starStreamBestShots')) || [0, 0, 0, 0];
-            
-            document.getElementById('finalScore').innerText = score;
-            document.getElementById('currentBestShotUI').innerText = currentBestShot;
-            
-            document.getElementById('ts1').innerText = topScores[0]; document.getElementById('ts2').innerText = topScores[1]; document.getElementById('ts3').innerText = topScores[2]; document.getElementById('ts4').innerText = topScores[3];
-            document.getElementById('bs1').innerText = bestShots[0]; document.getElementById('bs2').innerText = bestShots[1]; document.getElementById('bs3').innerText = bestShots[2]; document.getElementById('bs4').innerText = bestShots[3];
-            
-            document.getElementById('results').style.display = 'block'; document.getElementById('hud').style.display = 'none'; document.getElementById('thrustBtn').style.display = 'none';
         }
 
         function startTimer() {
-            const timerInterval = setInterval(() => {
-                if (timeLeft > 0 && gameActive) { 
-                    timeLeft--; document.getElementById('timer').textContent = `${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`; 
-                } else if (timeLeft <= 0 && gameActive) { 
-                    gameActive = false; clearInterval(timerInterval); displayEndScreen(); 
-                }
+            const int = setInterval(() => {
+                if(timeLeft > 0 && gameActive) { timeLeft--; document.getElementById('timer').innerText = `${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2,'0')}`; }
+                else { clearInterval(int); gameActive = false; document.getElementById('results').style.display = 'block'; }
             }, 1000);
         }
 
-        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
-
-        document.getElementById('startBtn').addEventListener('click', async function() {
-            document.getElementById('ui').style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
-            
-            initAudio(); // Initialize audio context on user gesture
-            
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                await DeviceOrientationEvent.requestPermission();
-            }
-            window.addEventListener('deviceorientation', onDeviceMove); 
-            gameActive = true; 
-            init();
-            
-            new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene; ship.scale.setScalar(3.0); ship.position.set(0, 0, -100); ship.rotation.set(0, Math.PI, 0);
-                engineBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.8 }));
-                engineBeam.position.set(0, 0, -6.5); engineBeam.rotation.x = Math.PI / 2; engineBeam.scale.set(0,0,0);
-                engineLight = new THREE.PointLight(0xff7700, 0, 50); engineLight.position.set(0, 0, -2);
-                ship.add(engineBeam, engineLight); scene.add(ship);
-            });
+        document.getElementById('startBtn').addEventListener('click', () => {
+            audioCtx = new AudioContext(); gameActive = true; document.getElementById('ui').style.display='none'; document.getElementById('hud').style.display='block'; init(); startTimer();
         });
-        
-        document.getElementById('replayBtn').addEventListener('click', () => location.reload());
-        
-        const thrustBtn = document.getElementById('thrustBtn');
-        thrustBtn.addEventListener('touchstart', (e) => { e.preventDefault(); isThrusting = true; thrustBtn.classList.add('active'); }, { passive: false });
-        thrustBtn.addEventListener('touchend', (e) => { e.preventDefault(); isThrusting = false; thrustBtn.classList.remove('active'); }, { passive: false });
-        
-        window.addEventListener('touchstart', (e) => { 
-            if (gameActive && !['thrustBtn', 'zeroBtn', 'startBtn', 'replayBtn'].includes(e.target.id)) pendingShot = true; 
-        });
-        
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
     </script>
 </body>
 </html>
