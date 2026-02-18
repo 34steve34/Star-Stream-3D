@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.0</title>
+    <title>Star Stream 3D - v4.7.1</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.0</div>
+    <div id="version">v4.7.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -258,32 +258,53 @@
             }
         }
 
-        function playExplosionSound() {
-            if (!audioCtx) return;
-            const t = audioCtx.currentTime;
-            
-            // Create audio nodes
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'sine'; // Sine wave is perfect for clean, deep bass
-            
-            // The "Drop": Start at 150Hz and sweep down to 20Hz rapidly
-            osc.frequency.setValueAtTime(150, t);
-            osc.frequency.exponentialRampToValueAtTime(20, t + 0.4);
-            
-            // The "Envelope": Start loud and fade out
-            gain.gain.setValueAtTime(1.5, t);
-            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-            
-            // Connect and play
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start(t);
-            osc.stop(t + 0.5);
-        }
+        function playExplosionSound(points = 20) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const intensity = Math.min(1, points / 90);   // magenta hits ≈ 1.0
 
+    // 1. Sharp initial CRACK (scary transient)
+    const crack = audioCtx.createOscillator();
+    const crackGain = audioCtx.createGain();
+    const crackFilter = audioCtx.createBiquadFilter();
+    crack.type = 'sawtooth';
+    crack.frequency.setValueAtTime(420 + Math.random() * 80, t);
+    crackFilter.type = 'lowpass';
+    crackFilter.frequency.setValueAtTime(1800, t);
+    crackFilter.frequency.exponentialRampToValueAtTime(400, t + 0.12);
+    crackGain.gain.setValueAtTime(1.1 * intensity, t);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    crack.connect(crackFilter).connect(crackGain).connect(audioCtx.destination);
+    crack.start(t);
+    crack.stop(t + 0.2);
+
+    // 2. Main body boom (your original but meaner & intensity-scaled)
+    const boom = audioCtx.createOscillator();
+    const boomGain = audioCtx.createGain();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(135 - 25 * intensity, t);     // deeper on big hits
+    boom.frequency.exponentialRampToValueAtTime(18, t + 0.55 + 0.25 * intensity);
+    boomGain.gain.setValueAtTime(2.2 * intensity, t);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 0.9 + 0.4 * intensity);
+
+    boom.connect(boomGain).connect(audioCtx.destination);
+    boom.start(t);
+    boom.stop(t + 1.4);
+
+    // 3. Sub rumble tail (the “oh shit” low end)
+    const sub = audioCtx.createOscillator();
+    const subGain = audioCtx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(48 - 12 * intensity, t);
+    sub.frequency.exponentialRampToValueAtTime(12, t + 1.1 + 0.6 * intensity);
+    subGain.gain.setValueAtTime(0.9 * intensity, t + 0.15);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 1.6 + 0.7 * intensity);
+
+    sub.connect(subGain).connect(audioCtx.destination);
+    sub.start(t + 0.15);
+    sub.stop(t + 2.4);
+}
         function initScope() {
             scopeCanvas = document.getElementById('scopeCanvas');
             scopeReticle = document.getElementById('scopeReticle');
@@ -446,7 +467,7 @@
                         
                         showPointPop(earnedPoints); 
                         updateBestShots(earnedPoints); 
-                        playExplosionSound(); // TRIGGERS THE AUDIO BOOM
+                        playExplosionSound(earnedPoints); // TRIGGERS THE AUDIO BOOM
                         createExplosion(t.position);
                         
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
