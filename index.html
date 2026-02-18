@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.2</title>
+    <title>Star Stream 3D - v4.7.3</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.2</div>
+    <div id="version">v4.7.3</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -405,7 +405,11 @@
                     else { t.material.color.setHex(0xff00ff); t.material.emissive.setHex(0x440044); }
                 }
             });
-            
+                if (debugActive) { 
+                drawGraph(); 
+                updateNumbers(lastBeta, lastGamma, pDiff || 0, yDiff || 0, currentRotationVel.p, currentRotationVel.y); 
+            }
+			
             handleBullets(); renderer.render(scene, camera);
         }
 
@@ -589,14 +593,31 @@
             } else { scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none'; }
         } 
 
-        function onDeviceMove(e) {
-            if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
-            let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
-            if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
-            const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
-            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * (Math.abs(e.beta) < 30 ? 1 : -1);
-        }
+       function onDeviceMove(e) {
+    if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
+    let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
+	let lastBeta = 0;
+	let lastGamma = 0;
+    if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
+    const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
+    currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+    currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * (Math.abs(e.beta) < 30 ? 1 : -1);
+
+    // ==================== DEBUG HOOK 1 ====================
+    if (debugActive) {
+        lastBeta = e.beta || 0;
+        lastGamma = e.gamma || 0;
+        history.beta.push(lastBeta);
+        history.gamma.push(lastGamma);
+        history.pDiff.push(pDiff);
+        history.yDiff.push(yDiff);
+        history.pitchVel.push(currentRotationVel.p);
+        history.yawVel.push(currentRotationVel.y);
+        history.gravTilt.push(accGravity.y * -4);   // red line jumps when lying down
+        if (history.beta.length > MAX_H) Object.keys(history).forEach(k => history[k].shift());
+    }
+    // ====================================================
+}
 
         function displayEndScreen() {
             let topScores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
