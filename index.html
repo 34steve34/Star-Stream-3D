@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.6.2</title>
+    <title>Star Stream 3D - v4.7.0</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -74,11 +74,27 @@
             width: 85%; max-width: 600px;
             border-radius: 10px;
         }
-        #results h1 { color: #fff; font-size: 24px; margin: 0 0 5px 0; letter-spacing: 2px; }
-        #finalScore { font-size: 56px; margin: 0; color: #00E676; font-weight: bold; line-height: 1; text-shadow: 0 0 15px rgba(0,230,118,0.5); }
+        #results h1 { color: #fff; font-size: 24px; margin: 0 0 15px 0; letter-spacing: 2px; }
+        
+        /* New Current Run Stats Layout */
+        .current-stats-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .stat-box { display: flex; flex-direction: column; align-items: center; }
+        .stat-label { font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; }
+        .stat-value { font-size: 48px; font-weight: bold; line-height: 1; }
+        
+        .score-green { color: #00E676; text-shadow: 0 0 15px rgba(0,230,118,0.5); }
+        .score-orange { color: #ffaa00; text-shadow: 0 0 15px rgba(255,170,0,0.5); }
         
         .leaderboards-container {
-            display: flex; justify-content: space-between; gap: 30px; margin-top: 15px; margin-bottom: 15px;
+            display: flex; justify-content: space-between; gap: 30px; margin-bottom: 15px;
         }
         .leaderboard-col { flex: 1; }
         
@@ -92,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.6.2</div>
+    <div id="version">v4.7.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -137,8 +153,17 @@
 
     <div id="results">
         <h1>MISSION COMPLETE</h1>
-        <div style="font-size:14px; color:#00E676; letter-spacing: 2px;">YOUR SCORE</div>
-        <div id="finalScore">0</div>
+        
+        <div class="current-stats-container">
+            <div class="stat-box">
+                <div class="stat-label score-green">YOUR SCORE</div>
+                <div class="stat-value score-green" id="finalScore">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label score-orange">BEST SHOT</div>
+                <div class="stat-value score-orange" id="currentBestShotUI">0</div>
+            </div>
+        </div>
         
         <div class="leaderboards-container">
             <div class="leaderboard-col">
@@ -198,6 +223,9 @@
         let shakeDuration = 0;
         let activeScopeBullet = null;
         let popTimeout = null;
+        let currentBestShot = 0; // Tracks the best shot for the current game
+        
+        let audioCtx; // Web Audio API Context
 
         function init() {
             scene = new THREE.Scene();
@@ -220,6 +248,42 @@
             animate();
         }
 
+        // --- DYNAMIC AUDIO GENERATOR ---
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playExplosionSound() {
+            if (!audioCtx) return;
+            const t = audioCtx.currentTime;
+            
+            // Create audio nodes
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine'; // Sine wave is perfect for clean, deep bass
+            
+            // The "Drop": Start at 150Hz and sweep down to 20Hz rapidly
+            osc.frequency.setValueAtTime(150, t);
+            osc.frequency.exponentialRampToValueAtTime(20, t + 0.4);
+            
+            // The "Envelope": Start loud and fade out
+            gain.gain.setValueAtTime(1.5, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+            
+            // Connect and play
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(t);
+            osc.stop(t + 0.5);
+        }
+
         function initScope() {
             scopeCanvas = document.getElementById('scopeCanvas');
             scopeReticle = document.getElementById('scopeReticle');
@@ -234,31 +298,13 @@
             
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.95)'; 
             ctx.lineWidth = 1.2;
-            
-            ctx.beginPath(); 
-            ctx.moveTo(centerX, centerY - gap); 
-            ctx.lineTo(centerX, centerY - gap - lineLength); 
-            ctx.stroke();
-            
-            ctx.beginPath(); 
-            ctx.moveTo(centerX, centerY + gap); 
-            ctx.lineTo(centerX, centerY + gap + lineLength); 
-            ctx.stroke();
-            
-            ctx.beginPath(); 
-            ctx.moveTo(centerX - gap, centerY); 
-            ctx.lineTo(centerX - gap - lineLength, centerY); 
-            ctx.stroke();
-            
-            ctx.beginPath(); 
-            ctx.moveTo(centerX + gap, centerY); 
-            ctx.lineTo(centerX + gap + lineLength, centerY); // THIS IS THE FULLY FIXED LINE!
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(centerX, centerY - gap); ctx.lineTo(centerX, centerY - gap - lineLength); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(centerX, centerY + gap); ctx.lineTo(centerX, centerY + gap + lineLength); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(centerX - gap, centerY); ctx.lineTo(centerX - gap - lineLength, centerY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(centerX + gap, centerY); ctx.lineTo(centerX + gap + lineLength, centerY); ctx.stroke();
             
             ctx.fillStyle = 'rgba(255, 0, 0, 0.95)'; 
-            ctx.beginPath(); 
-            ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2); 
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2); ctx.fill();
         }
 
        function animate() {
@@ -307,11 +353,7 @@
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
                 
-                handleStarWrap(); 
-                handleLocalStars(); 
-                updateIndicators(); 
-                updateScope(); 
-                updateExplosions();
+                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
                 
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -323,8 +365,7 @@
                 
                 if (shakeDuration > 0) {
                     const offset = (Math.random() - 0.5) * CONFIG.SHAKE_INTENSITY * (shakeDuration / 0.25);
-                    camera.position.x += offset; 
-                    camera.position.y += offset; 
+                    camera.position.x += offset; camera.position.y += offset; 
                     shakeDuration -= 0.016;
                 }
             }
@@ -337,24 +378,14 @@
                 
                 if (ship) {
                     const targetDist = ship.position.distanceTo(t.position);
-                    if (targetDist < 400) { 
-                        t.material.color.setHex(0x00ff00); 
-                        t.material.emissive.setHex(0x004400); 
-                    } else if (targetDist < 800) { 
-                        t.material.color.setHex(0xffff00); 
-                        t.material.emissive.setHex(0x444400); 
-                    } else if (targetDist < 1200) { 
-                        t.material.color.setHex(0xffaa00); 
-                        t.material.emissive.setHex(0x442200); 
-                    } else { 
-                        t.material.color.setHex(0xff00ff); 
-                        t.material.emissive.setHex(0x440044); 
-                    }
+                    if (targetDist < 400) { t.material.color.setHex(0x00ff00); t.material.emissive.setHex(0x004400); } 
+                    else if (targetDist < 800) { t.material.color.setHex(0xffff00); t.material.emissive.setHex(0x444400); } 
+                    else if (targetDist < 1200) { t.material.color.setHex(0xffaa00); t.material.emissive.setHex(0x442200); } 
+                    else { t.material.color.setHex(0xff00ff); t.material.emissive.setHex(0x440044); }
                 }
             });
             
-            handleBullets(); 
-            renderer.render(scene, camera);
+            handleBullets(); renderer.render(scene, camera);
         }
 
         function fireLaser() {
@@ -367,9 +398,7 @@
             p.add(new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff })), new THREE.PointLight(0xff00ff, 4500, 200));
             p.position.copy(spawnPos); 
             p.userData = { velocity: finalVelocity, origin: spawnPos.clone(), spawn: Date.now() };
-            scene.add(p); 
-            bullets.push(p); 
-            activeScopeBullet = p;
+            scene.add(p); bullets.push(p); activeScopeBullet = p;
         }
 
         function spawnWave() {
@@ -380,35 +409,24 @@
                 const orbitAngle = Math.random() * Math.PI * 2;
                 t.position.set(center.x + Math.cos(orbitAngle) * orbitRadius, center.y + (Math.random()-0.5)*600, center.z + Math.sin(orbitAngle) * orbitRadius);
                 t.userData = { 
-                    center: t.position.clone(), 
-                    radius: orbitRadius, 
+                    center: t.position.clone(), radius: orbitRadius, 
                     speed: ((Math.random()*0.001)+0.00065) * (Math.random() < 0.5 ? 1 : -1), 
-                    angle: orbitAngle, 
-                    axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() 
+                    angle: orbitAngle, axis: new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize() 
                 };
-                scene.add(t); 
-                targets.push(t);
+                scene.add(t); targets.push(t);
             }
             updateHUD();
         }
         
         function showPointPop(pts) {
-            const popEl = document.getElementById('pointPop'); 
-            popEl.innerText = `+${pts}`; 
-            popEl.style.opacity = 1;
-            
-            clearTimeout(popTimeout); 
-            popTimeout = setTimeout(() => { 
-                popEl.style.opacity = 0; 
-            }, 600);
+            const popEl = document.getElementById('pointPop'); popEl.innerText = `+${pts}`; popEl.style.opacity = 1;
+            clearTimeout(popTimeout); popTimeout = setTimeout(() => { popEl.style.opacity = 0; }, 600);
         }
 
         function updateBestShots(points) {
             let bestShots = JSON.parse(localStorage.getItem('starStreamBestShots')) || [0, 0, 0, 0];
             if (points > bestShots[3]) { 
-                bestShots.push(points); 
-                bestShots.sort((a, b) => b - a); 
-                bestShots = bestShots.slice(0, 4); 
+                bestShots.push(points); bestShots.sort((a, b) => b - a); bestShots = bestShots.slice(0, 4); 
                 localStorage.setItem('starStreamBestShots', JSON.stringify(bestShots)); 
             }
         }
@@ -420,23 +438,23 @@
                     if (b.position.distanceTo(t.position) < 28) {
                         const earnedPoints = 10 + Math.floor(b.position.distanceTo(b.userData.origin) / 10);
 						score += earnedPoints; 
+                        
+                        // Track Best Shot for THIS game
+                        if (earnedPoints > currentBestShot) {
+                            currentBestShot = earnedPoints;
+                        }
+                        
                         showPointPop(earnedPoints); 
                         updateBestShots(earnedPoints); 
+                        playExplosionSound(); // TRIGGERS THE AUDIO BOOM
                         createExplosion(t.position);
                         
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
-                        if (targets.length === 0) { 
-                            wave++; 
-                            targetsInWave += 4; 
-                            spawnWave(); 
-                        }
+                        if (targets.length === 0) { wave++; targetsInWave += 4; spawnWave(); }
                         updateHUD();
                     }
                 });
-                if (Date.now() - b.userData.spawn > 5000) { 
-                    scene.remove(b); 
-                    bullets.splice(bi, 1); 
-                }
+                if (Date.now() - b.userData.spawn > 5000) { scene.remove(b); bullets.splice(bi, 1); }
             });
         }
 
@@ -447,28 +465,20 @@
                 const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(Math.random()*8+4), new THREE.MeshBasicMaterial({ color: randomColor, transparent: true, opacity: 1 }));
                 shard.position.copy(pos); 
                 shard.userData = { velocity: new THREE.Vector3((Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*15), life: 1.0 };
-                scene.add(shard); 
-                explosions.push(shard);
+                scene.add(shard); explosions.push(shard);
             }
         }
 
         function updateExplosions() {
             for (let i = explosions.length - 1; i >= 0; i--) {
-                const s = explosions[i]; 
-                s.position.add(s.userData.velocity); 
-                s.userData.life -= 0.02; 
-                s.material.opacity = s.userData.life;
-                if (s.userData.life <= 0) { 
-                    scene.remove(s); 
-                    explosions.splice(i, 1); 
-                }
+                const s = explosions[i]; s.position.add(s.userData.velocity); s.userData.life -= 0.02; s.material.opacity = s.userData.life;
+                if (s.userData.life <= 0) { scene.remove(s); explosions.splice(i, 1); }
             }
         }
 
         function handleStarWrap() {
             starFields.forEach(field => {
-                const diff = new THREE.Vector3().subVectors(field.position, ship.position); 
-                const s = CONFIG.SECTOR_SIZE;
+                const diff = new THREE.Vector3().subVectors(field.position, ship.position); const s = CONFIG.SECTOR_SIZE;
                 if (Math.abs(diff.x) > s * 1.5) field.position.x -= Math.sign(diff.x) * s * 3;
                 if (Math.abs(diff.y) > s * 1.5) field.position.y -= Math.sign(diff.y) * s * 3;
                 if (Math.abs(diff.z) > s * 1.5) field.position.z -= Math.sign(diff.z) * s * 3;
@@ -478,8 +488,7 @@
         function handleLocalStars() {
             if(!localStars || !ship) return;
             localStars.position.copy(ship.position);
-            const positions = localStars.geometry.attributes.position.array; 
-            const range = CONFIG.LOCAL_STAR_RANGE;
+            const positions = localStars.geometry.attributes.position.array; const range = CONFIG.LOCAL_STAR_RANGE;
             for(let i=0; i<positions.length; i+=3) {
                 if(positions[i+2] > range/2) positions[i+2] -= range; if(positions[i+2] < -range/2) positions[i+2] += range;
                 if(positions[i] > range/2) positions[i] -= range; if(positions[i] < -range/2) positions[i] += range;
@@ -489,22 +498,18 @@
         }
 
         function initStars() {
-            const geo = new THREE.BufferGeometry(); 
-            const pos = new Float32Array(250 * 3);
+            const geo = new THREE.BufferGeometry(); const pos = new Float32Array(250 * 3);
             for(let i=0; i<250*3; i++) pos[i] = (Math.random()-0.5) * CONFIG.SECTOR_SIZE;
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
             const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true, opacity: 0.8 });
             for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) for(let z=-1; z<=1; z++) {
-                const p = new THREE.Points(geo, mat); 
-                p.position.set(x*CONFIG.SECTOR_SIZE, y*CONFIG.SECTOR_SIZE, z*CONFIG.SECTOR_SIZE);
-                scene.add(p); 
-                starFields.push(p);
+                const p = new THREE.Points(geo, mat); p.position.set(x*CONFIG.SECTOR_SIZE, y*CONFIG.SECTOR_SIZE, z*CONFIG.SECTOR_SIZE);
+                scene.add(p); starFields.push(p);
             }
         }
 
         function initLocalStars() {
-            const geo = new THREE.BufferGeometry(); 
-            const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
+            const geo = new THREE.BufferGeometry(); const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
             for(let i=0; i<CONFIG.LOCAL_STAR_COUNT * 3; i++) pos[i] = (Math.random()-0.5) * CONFIG.LOCAL_STAR_RANGE;
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
             localStars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.7 }));
@@ -513,81 +518,54 @@
 
         function updateIndicators() {
             const container = document.getElementById('indicator-container');
-            container.innerHTML = ''; 
-            if(!ship || !gameActive) return;
+            container.innerHTML = ''; if(!ship || !gameActive) return;
             
             const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
             targets.forEach(t => {
                 const vector = t.position.clone().project(camera);
                 if (frustum.containsPoint(t.position)) return;
                 
-                const div = document.createElement('div'); 
-                div.className = 'indicator';
+                const div = document.createElement('div'); div.className = 'indicator';
                 
                 const dist = ship.position.distanceTo(t.position);
                 const size = Math.max(10, Math.min(40, 40 - (dist / 2000) * 30));
-                div.style.width = `${size}px`; 
-                div.style.height = `${size}px`;
+                div.style.width = `${size}px`; div.style.height = `${size}px`;
                 const hexColor = t.material.color.getHexString();
                 div.style.background = `radial-gradient(circle, #${hexColor} 0%, rgba(0,0,0,0) 80%)`;
                 div.style.border = `1px solid #${hexColor}`;
                 
-                const margin = 10; 
-                let x, y;
+                const margin = 10; let x, y;
                 
                 if (vector.z > 1) { 
-                    const dirX = vector.x; const dirY = -vector.y; 
-                    const len = Math.sqrt(dirX * dirX + dirY * dirY);
-                    if (len < 0.001) { 
-                        x = window.innerWidth / 2; y = window.innerHeight - margin; 
-                    } else { 
-                        const normX = dirX / len, normY = dirY / len; 
-                        const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2; 
-                        const tLim = Math.min((halfW-margin)/Math.abs(normX), (halfH-margin)/Math.abs(normY)); 
-                        x = halfW + normX * tLim; 
-                        y = halfH + normY * tLim; 
-                    }
+                    const dirX = vector.x; const dirY = -vector.y; const len = Math.sqrt(dirX * dirX + dirY * dirY);
+                    if (len < 0.001) { x = window.innerWidth / 2; y = window.innerHeight - margin; }
+                    else { const normX = dirX / len, normY = dirY / len; const halfW = window.innerWidth / 2, halfH = window.innerHeight / 2; const tLim = Math.min((halfW-margin)/Math.abs(normX), (halfH-margin)/Math.abs(normY)); x = halfW + normX * tLim; y = halfH + normY * tLim; }
                 } else {
-                    x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2); 
-                    y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
-                    x = Math.max(margin, Math.min(window.innerWidth - margin, x)); 
-                    y = Math.max(margin, Math.min(window.innerHeight - margin, y));
+                    x = (vector.x * (window.innerWidth/2)) + (window.innerWidth/2); y = -(vector.y * (window.innerHeight/2)) + (window.innerHeight/2);
+                    x = Math.max(margin, Math.min(window.innerWidth - margin, x)); y = Math.max(margin, Math.min(window.innerHeight - margin, y));
                 }
-                div.style.left = `${x}px`; 
-                div.style.top = `${y}px`; 
-                container.appendChild(div);
+                div.style.left = `${x}px`; div.style.top = `${y}px`; container.appendChild(div);
             });
         }
 
         function updateScope() {
             if (!ship || !gameActive) return;
             const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion).normalize();
-            let activeTarget = null; 
-            let shortestDist = Infinity;
+            let activeTarget = null; let shortestDist = Infinity;
             
             for (let t of targets) {
-                const targetVec = t.position.clone().sub(ship.position); 
-                const projection = targetVec.dot(shipForward);
+                const targetVec = t.position.clone().sub(ship.position); const projection = targetVec.dot(shipForward);
                 if (projection > 0 && projection < CONFIG.SCOPE_RANGE) {
                     const lateralDist = ship.position.clone().add(shipForward.clone().multiplyScalar(projection)).distanceTo(t.position);
-                    if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE && projection < shortestDist) { 
-                        shortestDist = projection; 
-                        activeTarget = t; 
-                    }
+                    if (lateralDist < CONFIG.SCOPE_HIT_DISTANCE && projection < shortestDist) { shortestDist = projection; activeTarget = t; }
                 }
             }
             
             if (activeTarget || (activeScopeBullet && bullets.includes(activeScopeBullet))) {
                 scopeCamera.position.copy(ship.position).add(shipForward.clone().multiplyScalar(CONFIG.SCOPE_FORWARD_OFFSET));
-                scopeCamera.quaternion.copy(ship.quaternion); 
-                scopeCamera.rotateY(Math.PI);
-                scopeRenderer.render(scene, scopeCamera); 
-                scopeCanvas.style.display = 'block'; 
-                document.getElementById('scopeCrosshair').style.display = 'block';
-            } else { 
-                scopeCanvas.style.display = 'none'; 
-                document.getElementById('scopeCrosshair').style.display = 'none'; 
-            }
+                scopeCamera.quaternion.copy(ship.quaternion); scopeCamera.rotateY(Math.PI);
+                scopeRenderer.render(scene, scopeCamera); scopeCanvas.style.display = 'block'; document.getElementById('scopeCrosshair').style.display = 'block';
+            } else { scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none'; }
         } 
 
         function onDeviceMove(e) {
@@ -601,53 +579,35 @@
 
         function displayEndScreen() {
             let topScores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
-            topScores.push(score); 
-            topScores.sort((a, b) => b - a); 
-            topScores = topScores.slice(0, 4); 
-            localStorage.setItem('starStreamHighScores', JSON.stringify(topScores));
+            topScores.push(score); topScores.sort((a, b) => b - a); topScores = topScores.slice(0, 4); localStorage.setItem('starStreamHighScores', JSON.stringify(topScores));
             
             let bestShots = JSON.parse(localStorage.getItem('starStreamBestShots')) || [0, 0, 0, 0];
             
             document.getElementById('finalScore').innerText = score;
+            document.getElementById('currentBestShotUI').innerText = currentBestShot;
             
-            document.getElementById('ts1').innerText = topScores[0]; 
-            document.getElementById('ts2').innerText = topScores[1]; 
-            document.getElementById('ts3').innerText = topScores[2]; 
-            document.getElementById('ts4').innerText = topScores[3];
+            document.getElementById('ts1').innerText = topScores[0]; document.getElementById('ts2').innerText = topScores[1]; document.getElementById('ts3').innerText = topScores[2]; document.getElementById('ts4').innerText = topScores[3];
+            document.getElementById('bs1').innerText = bestShots[0]; document.getElementById('bs2').innerText = bestShots[1]; document.getElementById('bs3').innerText = bestShots[2]; document.getElementById('bs4').innerText = bestShots[3];
             
-            document.getElementById('bs1').innerText = bestShots[0]; 
-            document.getElementById('bs2').innerText = bestShots[1]; 
-            document.getElementById('bs3').innerText = bestShots[2]; 
-            document.getElementById('bs4').innerText = bestShots[3];
-            
-            document.getElementById('results').style.display = 'block'; 
-            document.getElementById('hud').style.display = 'none'; 
-            document.getElementById('thrustBtn').style.display = 'none';
+            document.getElementById('results').style.display = 'block'; document.getElementById('hud').style.display = 'none'; document.getElementById('thrustBtn').style.display = 'none';
         }
 
         function startTimer() {
             const timerInterval = setInterval(() => {
                 if (timeLeft > 0 && gameActive) { 
-                    timeLeft--; 
-                    document.getElementById('timer').textContent = `${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`; 
+                    timeLeft--; document.getElementById('timer').textContent = `${Math.floor(timeLeft/60).toString().padStart(2,'0')}:${(timeLeft%60).toString().padStart(2,'0')}`; 
                 } else if (timeLeft <= 0 && gameActive) { 
-                    gameActive = false; 
-                    clearInterval(timerInterval); 
-                    displayEndScreen(); 
+                    gameActive = false; clearInterval(timerInterval); displayEndScreen(); 
                 }
             }, 1000);
         }
 
-        function updateHUD() { 
-            document.getElementById('score').textContent = score; 
-            document.getElementById('wave').textContent = wave; 
-            document.getElementById('targets').textContent = targets.length; 
-        }
+        function updateHUD() { document.getElementById('score').textContent = score; document.getElementById('wave').textContent = wave; document.getElementById('targets').textContent = targets.length; }
 
         document.getElementById('startBtn').addEventListener('click', async function() {
-            document.getElementById('ui').style.display = 'none'; 
-            document.getElementById('hud').style.display = 'block'; 
-            document.getElementById('thrustBtn').style.display = 'block';
+            document.getElementById('ui').style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
+            
+            initAudio(); // Initialize audio context on user gesture
             
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
@@ -657,21 +617,11 @@
             init();
             
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
-                ship = gltf.scene; 
-                ship.scale.setScalar(3.0); 
-                ship.position.set(0, 0, -100); 
-                ship.rotation.set(0, Math.PI, 0);
-                
+                ship = gltf.scene; ship.scale.setScalar(3.0); ship.position.set(0, 0, -100); ship.rotation.set(0, Math.PI, 0);
                 engineBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.8 }));
-                engineBeam.position.set(0, 0, -6.5); 
-                engineBeam.rotation.x = Math.PI / 2; 
-                engineBeam.scale.set(0,0,0);
-                
-                engineLight = new THREE.PointLight(0xff7700, 0, 50); 
-                engineLight.position.set(0, 0, -2);
-                
-                ship.add(engineBeam, engineLight); 
-                scene.add(ship);
+                engineBeam.position.set(0, 0, -6.5); engineBeam.rotation.x = Math.PI / 2; engineBeam.scale.set(0,0,0);
+                engineLight = new THREE.PointLight(0xff7700, 0, 50); engineLight.position.set(0, 0, -2);
+                ship.add(engineBeam, engineLight); scene.add(ship);
             });
         });
         
