@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.2</title>
+    <title>Star Stream 3D - v4.7.3</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.2</div>
+    <div id="version">v4.7.3</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     <div id="hud">
@@ -301,20 +301,37 @@
             const container = document.getElementById('indicator-container');
             container.innerHTML = '';
             const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+            
             targets.forEach(t => {
                 if(frustum.containsPoint(t.position)) return;
-                const v = t.position.clone().project(camera);
+                
                 const d = ship.position.distanceTo(t.position);
-                const div = document.createElement('div'); div.className = 'indicator';
+                const v = t.position.clone().project(camera);
+                const div = document.createElement('div');
+                div.className = 'indicator';
+                
                 const sz = Math.max(10, Math.min(40, 40 - (d/2000)*30));
                 div.style.width = div.style.height = `${sz}px`;
                 const c = t.material.color.getHexString();
                 div.style.background = `radial-gradient(circle, #${c} 0%, rgba(0,0,0,0) 80%)`;
                 div.style.border = `1px solid #${c}`;
-                let x = (v.x * 0.5 + 0.5) * window.innerWidth, y = (v.y * -0.5 + 0.5) * window.innerHeight;
-                if(v.z > 1) { x = window.innerWidth - x; y = window.innerHeight - y; }
-                x = Math.max(10, Math.min(window.innerWidth-10, x)); y = Math.max(10, Math.min(window.innerHeight-10, y));
-                div.style.left = `${x}px`; div.style.top = `${y}px`; container.appendChild(div);
+
+                // REFINED EDGE PINNING MATH
+                let x = v.x, y = v.y;
+                if (v.z > 1) { x = -x; y = -y; } // Flip coordinates for objects behind
+                
+                const mag = Math.sqrt(x*x + y*y);
+                if (mag > 0) {
+                    x /= mag; y /= mag; // Normalize to unit circle
+                }
+                
+                // Map to screen edges with margin
+                const m = 0.92;
+                const screenX = (x * m * 0.5 + 0.5) * window.innerWidth;
+                const screenY = (y * m * -0.5 + 0.5) * window.innerHeight;
+                
+                div.style.left = `${screenX}px`; div.style.top = `${screenY}px`;
+                container.appendChild(div);
             });
         }
 
