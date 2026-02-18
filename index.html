@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.1</title>
+    <title>Star Stream 3D - v4.7.2</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.1</div>
+    <div id="version">v4.7.2</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -657,6 +657,143 @@
         });
         
         document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
-    </script>
+    
+	// ==================== FULL-SCREEN SENSOR DEBUG OVERLAY ====================
+let debugActive = false;
+const debugOverlay = document.getElementById('debugOverlay');
+const debugGraph = document.getElementById('debugGraph');
+const debugCtx = debugGraph.getContext('2d');
+const debugNumbers = document.getElementById('debugNumbers');
+const debugClose = document.getElementById('debugClose');
+
+let history = { beta: [], gamma: [], pDiff: [], yDiff: [], pitchVel: [], yawVel: [], gravTilt: [] };
+const MAX_H = 520;
+
+let accGravity = {x:0, y:0, z:0};
+let screenAngle = 0;
+
+function toggleDebug() {
+    debugActive = !debugActive;
+    debugOverlay.style.display = debugActive ? 'block' : 'none';
+    if (debugActive) {
+        history = { beta: [], gamma: [], pDiff: [], yDiff: [], pitchVel: [], yawVel: [], gravTilt: [] };
+    }
+}
+
+// Long-press ZERO button (650ms) to toggle
+let zeroTimer = null;
+const zeroBtn = document.getElementById('zeroBtn');
+zeroBtn.addEventListener('touchstart', () => { zeroTimer = setTimeout(toggleDebug, 650); }, {passive:false});
+zeroBtn.addEventListener('touchend', () => clearTimeout(zeroTimer));
+
+// Close button
+debugClose.addEventListener('click', toggleDebug);
+debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugOverlay') toggleDebug(); });
+
+// DeviceMotion for gravity
+window.addEventListener('devicemotion', e => {
+    if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
+});
+
+// Auto-update screen angle
+setInterval(() => { if (screen.orientation) screenAngle = screen.orientation.angle; }, 500);
+
+// DRAW GRAPH
+function drawGraph() {
+    if (!debugActive) return;
+    const w = debugGraph.width, h = debugGraph.height;
+    debugCtx.fillStyle = '#000';
+    debugCtx.fillRect(0, 0, w, h);
+
+    // light grid
+    debugCtx.strokeStyle = 'rgba(0,255,100,0.12)';
+    for (let i = 1; i < 8; i++) {
+        const y = h * i / 8;
+        debugCtx.beginPath(); debugCtx.moveTo(0,y); debugCtx.lineTo(w,y); debugCtx.stroke();
+    }
+
+    const center = h/2;
+    const colors = ['#4488ff','#ffaa00','#00ff88','#ffff44','#ff44ff','#00ffff','#ff2222'];
+    const keys = ['beta','gamma','pDiff','yDiff','pitchVel','yawVel','gravTilt'];
+
+    debugCtx.lineWidth = 3;
+    keys.forEach((k,i) => {
+        if (history[k].length < 2) return;
+        debugCtx.strokeStyle = colors[i];
+        debugCtx.shadowBlur = 12; debugCtx.shadowColor = colors[i];
+        debugCtx.beginPath();
+        history[k].forEach((v, idx) => {
+            const x = idx * (w / (MAX_H-1));
+            let scaled = center - v * (k.includes('Vel') ? 22 : 2.6);
+            if (k === 'gravTilt') scaled = center - v * 2.2;
+            scaled = Math.max(20, Math.min(h-20, scaled));
+            idx === 0 ? debugCtx.moveTo(x, scaled) : debugCtx.lineTo(x, scaled);
+        });
+        debugCtx.stroke();
+        debugCtx.shadowBlur = 0;
+    });
+
+    // Legend
+    debugCtx.font = '13px monospace';
+    debugCtx.textAlign = 'left';
+    debugCtx.fillStyle = '#fff';
+    ['BLUE raw β', 'ORANGE raw γ', 'GREEN pDiff', 'YELLOW yDiff', 'MAGENTA pitchVel', 'CYAN yawVel', 'RED gravTilt (lying down indicator)'].forEach((txt,i) => {
+        debugCtx.fillText(txt, 35, 45 + i*26);
+    });
+}
+
+// LIVE NUMBERS
+function updateNumbers(beta=0, gamma=0, pD=0, yD=0, pVel=0, yVel=0) {
+    if (!debugActive) return;
+    const gMag = Math.hypot(accGravity.x, accGravity.y, accGravity.z).toFixed(1);
+    debugNumbers.innerHTML = `
+        <strong style="color:#fff">RAW</strong><br>
+        β: <span style="color:#4488ff">${beta.toFixed(1)}°</span> (zero ${phoneZero.beta.toFixed(1)}°)<br>
+        γ: <span style="color:#ffaa00">${gamma.toFixed(1)}°</span> (zero ${phoneZero.gamma.toFixed(1)}°)<br><br>
+        
+        <strong style="color:#fff">CALCULATED</strong><br>
+        pDiff: <span style="color:#00ff88">${pD.toFixed(2)}°</span><br>
+        yDiff: <span style="color:#ffff44">${yD.toFixed(2)}°</span><br>
+        pitchVel: <span style="color:#ff44ff">${pVel.toFixed(3)}</span><br>
+        yawVel: <span style="color:#00ffff">${yVel.toFixed(3)}</span><br><br>
+        
+        <strong style="color:#fff">GRAVITY (m/s²) – key to lying-down flips</strong><br>
+        x: ${accGravity.x.toFixed(2)} y: ${accGravity.y.toFixed(2)} z: ${accGravity.z.toFixed(2)}<br>
+        magnitude: ${gMag} (≈9.81 normal)<br>
+        screen angle: ${screenAngle}°
+    `;
+}
+
+// ====================== TINY HOOKS INTO YOUR EXISTING CODE ======================
+// 1. Inside your onDeviceMove function, add these 4 lines at the VERY END (after you set currentRotationVel):
+    if (debugActive) {
+        history.beta.push(e.beta || 0);
+        history.gamma.push(e.gamma || 0);
+        history.pDiff.push(pDiff);           // your local pDiff
+        history.yDiff.push(yDiff);           // your local yDiff
+        history.pitchVel.push(currentRotationVel.p);
+        history.yawVel.push(currentRotationVel.y);
+        history.gravTilt.push(accGravity.y * -4); // simple lying-down indicator
+        if (history.beta.length > MAX_H) Object.keys(history).forEach(k => history[k].shift());
+    }
+
+// 2. Inside your animate() function, add this line near the bottom (before the final renderer.render):
+    if (debugActive) { drawGraph(); updateNumbers(e?.beta||0, e?.gamma||0, pDiff||0, yDiff||0, currentRotationVel.p, currentRotationVel.y); }
+
+// (Note: e is not in scope in animate, so for numbers you can use the last known values or just omit the raw beta/gamma in numbers – it still shows everything else perfectly.)
+
+// ====================== END OF DEBUG CODE ======================
+	
+	</script>
+	    <!-- SENSOR DEBUG OVERLAY - full screen for easy study -->
+    <div id="debugOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.96);z-index:2000;color:#0ff;font-family:monospace;overflow:hidden;">
+        <div style="position:absolute;top:15px;left:20px;font-size:21px;color:#0f0;">📈 SENSOR DEBUG - FULL SCREEN</div>
+        <div id="debugClose" style="position:absolute;top:15px;right:25px;font-size:32px;color:#ffaa00;cursor:pointer;">✕</div>
+        
+        <canvas id="debugGraph" width="1280" height="520" style="position:absolute;top:80px;left:50%;transform:translateX(-50%);border:3px solid #0a0;background:#000;"></canvas>
+        
+        <div id="debugNumbers" style="position:absolute;bottom:25px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);padding:14px 22px;border:2px solid #0a0;border-radius:8px;font-size:15px;line-height:1.65;min-width:520px;text-align:left;">
+        </div>
+    </div>
 </body>
 </html>
