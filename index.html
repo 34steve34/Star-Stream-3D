@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.4</title>
+    <title>Star Stream 3D - v4.8.5</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.4</div>
+    <div id="version">v4.8.5</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -745,7 +745,7 @@ debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugO
 const GYRO_PITCH_GAIN = 0.04;
 const GYRO_YAW_GAIN   = 0.015;
 
-const RATE_DEADZONE = 3.0;   // ← ignore tiny gyro noise (restores fine-tuning feel)
+const RATE_DEADZONE = 1.0;   // ← ignore tiny gyro noise (restores fine-tuning feel)
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
