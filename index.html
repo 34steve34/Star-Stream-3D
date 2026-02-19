@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.6</title>
+    <title>Star Stream 3D - v4.7.8</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.6</div>
+    <div id="version">v4.7.8</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -224,6 +224,10 @@
         let activeScopeBullet = null;
         let popTimeout = null;
         let currentBestShot = 0; // Tracks the best shot for the current game
+		// === GYRO INTEGRATION v4.7.7 (posture-independent tilt) ===
+		let relativeTilt = { p: 0, y: 0 };
+		let lastMotionTime = 0;
+		let currentRotationRate = { alpha: 0, beta: 0, gamma: 0 };
         
         let audioCtx; // Web Audio API Context
 
@@ -406,9 +410,9 @@
                 }
             });
                 if (debugActive) { 
-						drawGraph(); 
-						updateNumbers(pDiff||0, yDiff||0, currentRotationVel.p, currentRotationVel.y); 
-}
+					drawGraph(); 
+					updateNumbers(relativeTilt.p, relativeTilt.y, currentRotationVel.p, currentRotationVel.y); 
+				}
 			
             handleBullets(); renderer.render(scene, camera);
         }
@@ -594,15 +598,23 @@
         } 
 
       // ====================== HOOKS (replace your old ones) ======================
-	function onDeviceMove(e) {   // ← replace your whole onDeviceMove with this updated one
-    if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
-    let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
-    if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
+	function onDeviceMove(e) {
+    if (!gameActive) return;
+    
+    let pDiff = relativeTilt.p;
+    let yDiff = relativeTilt.y;
+    
     const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
+    
     currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-    currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * (Math.abs(e.beta) < 30 ? 1 : -1);
-
-    // DEBUG HOOK v2
+    currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
+    
+    // Gentle anti-drift when almost centered
+    if (Math.abs(pDiff) < 10 && Math.abs(yDiff) < 10) {
+        relativeTilt.p *= 0.965;
+        relativeTilt.y *= 0.965;
+    }
+    
     if (debugActive) {
         lastBeta = e.beta || 0; lastGamma = e.gamma || 0;
         history.beta.push(lastBeta); history.gamma.push(lastGamma);
@@ -652,6 +664,7 @@
             }
             window.addEventListener('deviceorientation', onDeviceMove); 
             gameActive = true; 
+			isInitialized = true;
             init();
             
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
@@ -673,7 +686,12 @@
             if (gameActive && !['thrustBtn', 'zeroBtn', 'startBtn', 'replayBtn'].includes(e.target.id)) pendingShot = true; 
         });
         
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
+		document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { 
+			e.preventDefault(); 
+			relativeTilt = { p: 0, y: 0 };   // true center reset in ANY grip
+			isInitialized = false;
+			zeroTimer = setTimeout(toggleDebug, 650);
+		}, {passive: false});
     
 	// ==================== FULL-SCREEN SENSOR DEBUG OVERLAY (PHONE-FIXED) ====================
 // ==================== SENSOR DEBUG v2 - FIXED (rolling + full gravity) ====================
@@ -717,6 +735,26 @@ debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugO
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
+    
+    if (e.rotationRate && gameActive) {
+        currentRotationRate = e.rotationRate;
+        
+        const now = performance.now();
+        if (lastMotionTime > 0) {
+            const dt = (now - lastMotionTime) / 1000;
+            
+            // Default mapping for your landscape grip (charging port on right)
+            const pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
+            const yawRate   = (e.rotationRate.gamma || 0) * (180 / Math.PI);
+            
+            relativeTilt.p += pitchRate * dt * 1.05;
+            relativeTilt.y += yawRate * dt * 0.95;
+            
+            relativeTilt.p = Math.max(-62, Math.min(62, relativeTilt.p));
+            relativeTilt.y = Math.max(-62, Math.min(62, relativeTilt.y));
+        }
+        lastMotionTime = now;
+    }
 });
 
 setInterval(() => { if (screen.orientation) screenAngle = screen.orientation.angle; }, 500);
