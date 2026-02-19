@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.8</title>
+    <title>Star Stream 3D - v4.7.9</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.8</div>
+    <div id="version">v4.7.9</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -727,11 +727,20 @@ function resizeCanvas() {
 
 let zeroTimer = null;
 const zeroBtn = document.getElementById('zeroBtn');
-zeroBtn.addEventListener('touchstart', () => { zeroTimer = setTimeout(toggleDebug, 650); }, {passive:false});
+zeroBtn.addEventListener('touchstart', (e) => { 
+    e.preventDefault(); 
+    relativeTilt = { p: 0, y: 0 };   // true gyro reset on EVERY tap
+    isInitialized = false;
+    zeroTimer = setTimeout(toggleDebug, 650); 
+}, {passive: false});
 zeroBtn.addEventListener('touchend', () => clearTimeout(zeroTimer));
 
 debugClose.addEventListener('click', toggleDebug);
 debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugOverlay') toggleDebug(); });
+
+// === GYRO SENSITIVITY TUNER (v4.7.7) ===
+const GYRO_PITCH_GAIN = 0.16;   // ← change this if still too fast/slow (try 0.12 or 0.20)
+const GYRO_YAW_GAIN   = 0.14;
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
@@ -743,12 +752,11 @@ window.addEventListener('devicemotion', e => {
         if (lastMotionTime > 0) {
             const dt = (now - lastMotionTime) / 1000;
             
-            // Default mapping for your landscape grip (charging port on right)
             const pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
             const yawRate   = (e.rotationRate.gamma || 0) * (180 / Math.PI);
             
-            relativeTilt.p += pitchRate * dt * 1.05;
-            relativeTilt.y += yawRate * dt * 0.95;
+            relativeTilt.p += pitchRate * dt * GYRO_PITCH_GAIN;
+            relativeTilt.y += yawRate * dt * GYRO_YAW_GAIN;
             
             relativeTilt.p = Math.max(-62, Math.min(62, relativeTilt.p));
             relativeTilt.y = Math.max(-62, Math.min(62, relativeTilt.y));
