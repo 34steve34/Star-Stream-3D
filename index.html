@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.2</title>
+    <title>Star Stream 3D - v4.8.3</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.2</div>
+    <div id="version">v4.8.3</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -725,14 +725,17 @@ function resizeCanvas() {
     debugGraph.height = h;
 }
 
-let zeroTimer = null;
 const zeroBtn = document.getElementById('zeroBtn');
+let zeroTimer = null;
+
 zeroBtn.addEventListener('touchstart', (e) => { 
     e.preventDefault(); 
-    relativeTilt = { p: 0, y: 0 };   // true gyro reset on EVERY tap
+    relativeTilt = { p: 0, y: 0 };   // instant gyro reset
     isInitialized = false;
+    
     zeroTimer = setTimeout(toggleDebug, 650); 
 }, {passive: false});
+
 zeroBtn.addEventListener('touchend', () => clearTimeout(zeroTimer));
 
 debugClose.addEventListener('click', toggleDebug);
@@ -742,7 +745,7 @@ debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugO
 const GYRO_PITCH_GAIN = 0.05;
 const GYRO_YAW_GAIN   = 0.03;
 
-const RATE_DEADZONE = 4.5;   // ← ignore tiny gyro noise (restores fine-tuning feel)
+const RATE_DEADZONE = 3.5;   // ← ignore tiny gyro noise (restores fine-tuning feel)
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
@@ -761,13 +764,13 @@ window.addEventListener('devicemotion', e => {
             if (Math.abs(pitchRate) > RATE_DEADZONE) {
                 relativeTilt.p += pitchRate * dt * GYRO_PITCH_GAIN;
             } else {
-                relativeTilt.p *= 0.89;   // gentle return-to-center
+                relativeTilt.p *= 0.93;   // gentle return-to-center
             }
             
             if (Math.abs(yawRate) > RATE_DEADZONE) {
                 relativeTilt.y += yawRate * dt * GYRO_YAW_GAIN;
             } else {
-                relativeTilt.y *= 0.89;
+                relativeTilt.y *= 0.93;
             }
             
             relativeTilt.p = Math.max(-62, Math.min(62, relativeTilt.p));
