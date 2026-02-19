@@ -1,4 +1,4 @@
-// Star Stream PWA - VERSION 4.8.0 - 2026-02-17
+// Star Stream PWA - VERSION 4.8.1 - 2026-02-17
 // grok4.2 4.7.2 added debugging graphs push zero long press to activate
 // grok4.2beta 4.7.1 enhanced explosion sound
 // gemini 4.7.0 added explosion sound, added best single shot for current game
@@ -19,7 +19,7 @@
 // Bigger stars: THREE.PointsMaterial({ color: 0xffffff, size: 12, transparent: true })
 // FIXED: Removed all delta time, back to frame-locked physics
 
-const CACHE_NAME = 'star-stream-3D-v4.8.0';
+const CACHE_NAME = 'star-stream-3D-v4.8.1';
 const urlsToCache = [
   './',
   './index.html',
