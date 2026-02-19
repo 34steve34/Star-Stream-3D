@@ -1,9 +1,10 @@
+<DOCUMENT filename="index.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.7.6</title>
+    <title>Star Stream 3D - v4.7.7</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +109,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.7.6</div>
+    <div id="version">v4.7.7</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -225,6 +226,11 @@
         let popTimeout = null;
         let currentBestShot = 0; // Tracks the best shot for the current game
         
+        // === NEW GYRO INTEGRATION VARS (v4.7.7) ===
+        let relativeTilt = { p: 0, y: 0 };
+        let lastMotionTime = 0;
+        let currentRotationRate = { alpha: 0, beta: 0, gamma: 0 }; // for debug
+
         let audioCtx; // Web Audio API Context
 
         function init() {
@@ -261,9 +267,8 @@
         function playExplosionSound(points = 20) {
     if (!audioCtx) return;
     const t = audioCtx.currentTime;
-    const intensity = Math.min(1, points / 90);   // magenta hits ≈ 1.0
+    const intensity = Math.min(1, points / 90);
 
-    // 1. Sharp initial CRACK (scary transient)
     const crack = audioCtx.createOscillator();
     const crackGain = audioCtx.createGain();
     const crackFilter = audioCtx.createBiquadFilter();
@@ -279,11 +284,10 @@
     crack.start(t);
     crack.stop(t + 0.2);
 
-    // 2. Main body boom (your original but meaner & intensity-scaled)
     const boom = audioCtx.createOscillator();
     const boomGain = audioCtx.createGain();
     boom.type = 'sine';
-    boom.frequency.setValueAtTime(135 - 25 * intensity, t);     // deeper on big hits
+    boom.frequency.setValueAtTime(135 - 25 * intensity, t);
     boom.frequency.exponentialRampToValueAtTime(18, t + 0.55 + 0.25 * intensity);
     boomGain.gain.setValueAtTime(2.2 * intensity, t);
     boomGain.gain.exponentialRampToValueAtTime(0.001, t + 0.9 + 0.4 * intensity);
@@ -292,7 +296,6 @@
     boom.start(t);
     boom.stop(t + 1.4);
 
-    // 3. Sub rumble tail (the “oh shit” low end)
     const sub = audioCtx.createOscillator();
     const subGain = audioCtx.createGain();
     sub.type = 'sine';
@@ -305,6 +308,7 @@
     sub.start(t + 0.15);
     sub.stop(t + 2.4);
 }
+
         function initScope() {
             scopeCanvas = document.getElementById('scopeCanvas');
             scopeReticle = document.getElementById('scopeReticle');
@@ -407,7 +411,7 @@
             });
                 if (debugActive) { 
 						drawGraph(); 
-						updateNumbers(pDiff||0, yDiff||0, currentRotationVel.p, currentRotationVel.y); 
+						updateNumbers(relativeTilt.p, relativeTilt.y, currentRotationVel.p, currentRotationVel.y); 
 }
 			
             handleBullets(); renderer.render(scene, camera);
@@ -464,14 +468,13 @@
                         const earnedPoints = 10 + Math.floor(b.position.distanceTo(b.userData.origin) / 10);
 						score += earnedPoints; 
                         
-                        // Track Best Shot for THIS game
                         if (earnedPoints > currentBestShot) {
                             currentBestShot = earnedPoints;
                         }
                         
                         showPointPop(earnedPoints); 
                         updateBestShots(earnedPoints); 
-                        playExplosionSound(earnedPoints); // TRIGGERS THE AUDIO BOOM
+                        playExplosionSound(earnedPoints);
                         createExplosion(t.position);
                         
                         scene.remove(t); targets.splice(ti, 1); scene.remove(b); bullets.splice(bi, 1);
@@ -593,27 +596,36 @@
             } else { scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none'; }
         } 
 
-      // ====================== HOOKS (replace your old ones) ======================
-	function onDeviceMove(e) {   // ← replace your whole onDeviceMove with this updated one
-    if (!isInitialized) { phoneZero = { beta: e.beta, gamma: e.gamma }; isInitialized = true; return; }
-    let pDiff = e.gamma - phoneZero.gamma, yDiff = e.beta - phoneZero.beta;
-    if (yDiff > 180) yDiff -= 360; if (yDiff < -180) yDiff += 360;
-    const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
-    currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-    currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY) * (Math.abs(e.beta) < 30 ? 1 : -1);
-
-    // DEBUG HOOK v2
-    if (debugActive) {
-        lastBeta = e.beta || 0; lastGamma = e.gamma || 0;
-        history.beta.push(lastBeta); history.gamma.push(lastGamma);
-        history.pDiff.push(pDiff); history.yDiff.push(yDiff);
-        history.pitchVel.push(currentRotationVel.p); history.yawVel.push(currentRotationVel.y);
-        history.gravX.push(accGravity.x * 25);
-        history.gravY.push(accGravity.y * 25);
-        history.gravZ.push(accGravity.z * 25);
-        if (history.beta.length > MAX_HISTORY) Object.keys(history).forEach(k => history[k].shift());
-    }
-}
+        // ====================== NEW GYRO-BASED onDeviceMove (v4.7.7) ======================
+        function onDeviceMove(e) {
+            if (!gameActive) return;
+            
+            let pDiff = relativeTilt.p;
+            let yDiff = relativeTilt.y;
+            
+            const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
+            
+            currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+            currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
+            
+            // Gentle anti-drift
+            if (Math.abs(pDiff) < 10 && Math.abs(yDiff) < 10) {
+                relativeTilt.p *= 0.965;
+                relativeTilt.y *= 0.965;
+            }
+            
+            // Keep full debug history
+            if (debugActive) {
+                lastBeta = e.beta || 0; lastGamma = e.gamma || 0;
+                history.beta.push(lastBeta); history.gamma.push(lastGamma);
+                history.pDiff.push(pDiff); history.yDiff.push(yDiff);
+                history.pitchVel.push(currentRotationVel.p); history.yawVel.push(currentRotationVel.y);
+                history.gravX.push(accGravity.x * 25);
+                history.gravY.push(accGravity.y * 25);
+                history.gravZ.push(accGravity.z * 25);
+                if (history.beta.length > MAX_HISTORY) Object.keys(history).forEach(k => history[k].shift());
+            }
+        }
 
         function displayEndScreen() {
             let topScores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
@@ -645,7 +657,7 @@
         document.getElementById('startBtn').addEventListener('click', async function() {
             document.getElementById('ui').style.display = 'none'; document.getElementById('hud').style.display = 'block'; document.getElementById('thrustBtn').style.display = 'block';
             
-            initAudio(); // Initialize audio context on user gesture
+            initAudio();
             
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
@@ -673,10 +685,14 @@
             if (gameActive && !['thrustBtn', 'zeroBtn', 'startBtn', 'replayBtn'].includes(e.target.id)) pendingShot = true; 
         });
         
-        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { e.preventDefault(); isInitialized = false; });
+        // ZERO BUTTON — now also resets relativeTilt
+        document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            relativeTilt = { p: 0, y: 0 };
+            isInitialized = false;
+        });
     
-	// ==================== FULL-SCREEN SENSOR DEBUG OVERLAY (PHONE-FIXED) ====================
-// ==================== SENSOR DEBUG v2 - FIXED (rolling + full gravity) ====================
+	// ==================== FULL-SCREEN SENSOR DEBUG OVERLAY ====================
 let debugActive = false;
 const debugOverlay = document.getElementById('debugOverlay');
 const debugGraph = document.getElementById('debugGraph');
@@ -689,7 +705,7 @@ let lastBeta = 0, lastGamma = 0;
 let accGravity = {x:0, y:0, z:0};
 let screenAngle = 0;
 
-const MAX_HISTORY = 950;   // fixed rolling buffer → no more squeezing, data scrolls off left
+const MAX_HISTORY = 950;
 
 function toggleDebug() {
     debugActive = !debugActive;
@@ -717,17 +733,35 @@ debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugO
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
+    
+    // === GYRO INTEGRATION (v4.7.7) ===
+    if (e.rotationRate && gameActive) {
+        currentRotationRate = e.rotationRate;
+        
+        const now = performance.now();
+        if (lastMotionTime > 0) {
+            const dt = (now - lastMotionTime) / 1000;
+            
+            const pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
+            const yawRate   = (e.rotationRate.gamma || 0) * (180 / Math.PI);
+            
+            relativeTilt.p += pitchRate * dt * 1.05;
+            relativeTilt.y += yawRate * dt * 0.95;
+            
+            relativeTilt.p = Math.max(-62, Math.min(62, relativeTilt.p));
+            relativeTilt.y = Math.max(-62, Math.min(62, relativeTilt.y));
+        }
+        lastMotionTime = now;
+    }
 });
 
 setInterval(() => { if (screen.orientation) screenAngle = screen.orientation.angle; }, 500);
 
-// ==================== ROLLING GRAPH (no squeezing) ====================
 function drawGraph() {
     if (!debugActive) return;
     const w = debugGraph.width, h = debugGraph.height;
     debugCtx.fillStyle = '#000'; debugCtx.fillRect(0,0,w,h);
 
-    // grid
     debugCtx.strokeStyle = 'rgba(0,255,100,0.15)';
     for (let i=1; i<10; i++) {
         const y = h*i/10; debugCtx.beginPath(); debugCtx.moveTo(0,y); debugCtx.lineTo(w,y); debugCtx.stroke();
@@ -736,7 +770,7 @@ function drawGraph() {
     const center = h*0.5;
     const keys = ['beta','gamma','pDiff','yDiff','pitchVel','yawVel','gravX','gravY','gravZ'];
     const colors = ['#4488ff','#ffaa00','#00ff88','#ffff44','#ff44ff','#00ffff','#ff6666','#ff2222','#aa0000'];
-    const scales = [2.8, 2.8, 2.8, 2.8, 68, 68, 25, 25, 25]; // last three = gravity scaling
+    const scales = [2.8, 2.8, 2.8, 2.8, 68, 68, 25, 25, 25];
 
     debugCtx.lineWidth = 3.2;
     keys.forEach((k,i) => {
@@ -754,11 +788,9 @@ function drawGraph() {
         debugCtx.shadowBlur = 0;
     });
 
-    // zero line
     debugCtx.strokeStyle = 'rgba(255,255,255,0.45)'; debugCtx.lineWidth = 1.8;
     debugCtx.beginPath(); debugCtx.moveTo(0,center); debugCtx.lineTo(w,center); debugCtx.stroke();
 
-    // legend
     debugCtx.font = '14px monospace';
     debugCtx.fillStyle = '#fff';
     const legend = [
@@ -769,7 +801,6 @@ function drawGraph() {
     legend.forEach((txt,i) => debugCtx.fillText(txt, 28, 38 + i*23));
 }
 
-// ==================== NUMBERS ====================
 function updateNumbers(pD=0, yD=0, pVel=0, yVel=0) {
     if (!debugActive) return;
     const gMag = Math.hypot(accGravity.x, accGravity.y, accGravity.z).toFixed(1);
@@ -782,25 +813,28 @@ function updateNumbers(pD=0, yD=0, pVel=0, yVel=0) {
         pDiff: <span style="color:#00ff88">${pD.toFixed(2)}°</span> yDiff: <span style="color:#ffff44">${yD.toFixed(2)}°</span><br>
         pitchVel: <span style="color:#ff44ff">${pVel.toFixed(3)}</span> yawVel: <span style="color:#00ffff">${yVel.toFixed(3)}</span><br><br>
         
-        <strong>GRAVITY (m/s²) — now all 3 axes</strong><br>
+        <strong>GRAVITY (m/s²)</strong><br>
         X: <span style="color:#ff6666">${accGravity.x.toFixed(2)}</span> 
         Y: <span style="color:#ff2222">${accGravity.y.toFixed(2)}</span> 
         Z: <span style="color:#aa0000">${accGravity.z.toFixed(2)}</span><br>
         magnitude: ${gMag} screen: ${screenAngle}°
+        
+        <br><br><strong>ROTATION RATE (deg/s) — tune mapping here</strong><br>
+        β: <span style="color:#ff44ff">${(currentRotationRate.beta || 0).toFixed(1)}</span> ← forward/back tilt<br>
+        γ: <span style="color:#00ffff">${(currentRotationRate.gamma || 0).toFixed(1)}</span> ← left/right twist<br>
+        α: <span style="color:#ffff44">${(currentRotationRate.alpha || 0).toFixed(1)}</span>
     `;
 }
 
-// ====================== HOOKS (already in place) ======================
-// onDeviceMove hook and animate hook stay exactly as you added them earlier
 // ====================== END OF DEBUG CODE ======================
 	
 	</script>
-	      <!-- SENSOR DEBUG v2 - numbers on top, rolling graph, full gravity -->
+	
+    <!-- SENSOR DEBUG v2 -->
     <div id="debugOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.97);z-index:2000;color:#0ff;font-family:monospace;overflow:hidden;">
         <div style="position:absolute;top:12px;left:20px;font-size:22px;color:#0f0;">📈 SENSOR DEBUG v2 - FULL SCREEN</div>
         <div id="debugClose" style="position:absolute;top:12px;right:25px;font-size:36px;color:#ffaa00;cursor:pointer;">✕</div>
         
-        <!-- NUMBERS PANEL — moved to TOP so you can always see it -->
         <div id="debugNumbers" style="position:absolute;top:58px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.92);padding:18px 26px;border:3px solid #0ff;border-radius:12px;font-size:16px;line-height:1.75;width:92%;max-width:780px;text-align:left;box-shadow:0 0 25px rgba(0,255,255,0.6);">
         </div>
         
@@ -808,3 +842,4 @@ function updateNumbers(pD=0, yD=0, pVel=0, yVel=0) {
     </div>
 </body>
 </html>
+</DOCUMENT>
