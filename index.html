@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.3</title>
+    <title>Star Stream 3D - v4.8.4</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.3</div>
+    <div id="version">v4.8.4</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -742,10 +742,10 @@ debugClose.addEventListener('click', toggleDebug);
 debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugOverlay') toggleDebug(); });
 
 // === GYRO SENSITIVITY TUNER (v4.8.1) ===
-const GYRO_PITCH_GAIN = 0.05;
-const GYRO_YAW_GAIN   = 0.03;
+const GYRO_PITCH_GAIN = 0.04;
+const GYRO_YAW_GAIN   = 0.015;
 
-const RATE_DEADZONE = 3.5;   // ← ignore tiny gyro noise (restores fine-tuning feel)
+const RATE_DEADZONE = 3.0;   // ← ignore tiny gyro noise (restores fine-tuning feel)
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
@@ -758,7 +758,7 @@ window.addEventListener('devicemotion', e => {
             const dt = (now - lastMotionTime) / 1000;
             
             let pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
-            let yawRate   = (e.rotationRate.gamma || 0) * (180 / Math.PI);
+            let yawRate   = -(e.rotationRate.gamma || 0) * (180 / Math.PI);
             
             // DEADZONE + DAMPING — stops easy spinning when phone is steady
             if (Math.abs(pitchRate) > RATE_DEADZONE) {
