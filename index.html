@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.5</title>
+    <title>Star Stream 3D - v4.8.6</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.5</div>
+    <div id="version">v4.8.6</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -742,10 +742,11 @@ debugClose.addEventListener('click', toggleDebug);
 debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugOverlay') toggleDebug(); });
 
 // === GYRO SENSITIVITY TUNER (v4.8.1) ===
-const GYRO_PITCH_GAIN = 0.04;
-const GYRO_YAW_GAIN   = 0.015;
+// === GYRO TUNER v4.7.7 — fixed yaw symmetry + fine control restored ===
+const GYRO_PITCH_GAIN = 0.05;
+const GYRO_YAW_GAIN   = 0.03;
 
-const RATE_DEADZONE = 1.0;   // ← ignore tiny gyro noise (restores fine-tuning feel)
+const RATE_DEADZONE = 2.5;   // lowered so small fine-tuning tilts still work
 
 window.addEventListener('devicemotion', e => {
     if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
@@ -758,23 +759,27 @@ window.addEventListener('devicemotion', e => {
             const dt = (now - lastMotionTime) / 1000;
             
             let pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
-            let yawRate   = -(e.rotationRate.gamma || 0) * (180 / Math.PI);
+            let yawRate   = -(e.rotationRate.gamma || 0) * (180 / Math.PI);   // ← YAW REVERSED (as you asked)
             
-            // DEADZONE + DAMPING — stops easy spinning when phone is steady
+            // Deadzone for noise, but still allow tiny fine-tuning
             if (Math.abs(pitchRate) > RATE_DEADZONE) {
                 relativeTilt.p += pitchRate * dt * GYRO_PITCH_GAIN;
             } else {
-                relativeTilt.p *= 0.93;   // gentle return-to-center
+                relativeTilt.p *= 0.88;   // gentle return-to-center
             }
             
             if (Math.abs(yawRate) > RATE_DEADZONE) {
                 relativeTilt.y += yawRate * dt * GYRO_YAW_GAIN;
             } else {
-                relativeTilt.y *= 0.93;
+                relativeTilt.y *= 0.88;
             }
             
-            relativeTilt.p = Math.max(-62, Math.min(62, relativeTilt.p));
-            relativeTilt.y = Math.max(-62, Math.min(62, relativeTilt.y));
+            // LIGHT SPRING + WIDER CLAMP — this kills the one-sided slowdown forever
+            relativeTilt.p *= 0.935;   // fights bias every frame
+            relativeTilt.y *= 0.935;
+            
+            relativeTilt.p = Math.max(-95, Math.min(95, relativeTilt.p));   // much wider, no saturation
+            relativeTilt.y = Math.max(-95, Math.min(95, relativeTilt.y));
         }
         lastMotionTime = now;
     }
