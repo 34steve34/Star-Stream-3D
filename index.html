@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.8</title>
+    <title>Star Stream 3D - v4.8.9</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.8</div>
+    <div id="version">v4.8.9</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -338,7 +338,7 @@
             const dt = clock.getDelta();
             
             if (ship && isInitialized) {
-                const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const shipRight = new THREE.Vector3(1, 0, 0).applyQuaternion(ship.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
                 // --- PITCH-AWARE YAW RATE CAP ---
@@ -365,7 +365,7 @@
                 const proposedPitch = currentPitchAngle - currentRotationVel.p;
                 
                 if (proposedPitch > -MAX_PITCH && proposedPitch < MAX_PITCH) {
-                    ship.rotateOnWorldAxis(camRight, -currentRotationVel.p);
+                    ship.rotateOnWorldAxis(shipRight, -currentRotationVel.p);
                 }
                 
                 const currentGunTipPos = new THREE.Vector3(0, 0, 15).applyQuaternion(ship.quaternion).add(ship.position);
