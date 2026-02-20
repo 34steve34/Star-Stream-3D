@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.6</title>
+    <title>Star Stream 3D - v4.8.7</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.6</div>
+    <div id="version">v4.8.7</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -340,6 +340,20 @@
             if (ship && isInitialized) {
                 const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+                // --- PITCH-AWARE YAW RATE CAP ---
+                // At high pitch the yaw orbit shrinks (cos of pitch angle).
+                // We cap yaw to a fixed rotations/second so the apparent spin
+                // rate stays the same regardless of how steeply the nose is raised.
+                // Cap is applied here where dt is available, not in the gyro handler.
+                const shipForwardForCap = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+                const pitchAngleForCap = Math.asin(Math.max(-1, Math.min(1, shipForwardForCap.y)));
+                const orbitRadius = Math.max(0.08, Math.cos(pitchAngleForCap)); // never goes fully to zero
+                const MAX_ROTATIONS_PER_SECOND = 0.4; // tune: 0.4 = one full spin every 2.5 seconds at equator
+                const maxYawVel = MAX_ROTATIONS_PER_SECOND * Math.PI * 2 * orbitRadius * dt;
+                currentRotationVel.y = Math.max(-maxYawVel, Math.min(maxYawVel, currentRotationVel.y));
+                // --- END YAW CAP ---
+
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 
                 const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
@@ -609,11 +623,11 @@
     currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
     currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
     
-    // Gentle anti-drift when almost centered
-    if (Math.abs(pDiff) < 10 && Math.abs(yDiff) < 10) {
-        relativeTilt.p *= 0.965;
-        relativeTilt.y *= 0.965;
+    // Very gentle pitch anti-drift only when nearly neutral — yaw holds freely
+    if (Math.abs(pDiff) < 5) {
+        relativeTilt.p *= 0.97;
     }
+    // No yaw anti-drift: accumulates for unlimited rotation
     
     if (debugActive) {
         lastBeta = e.beta || 0; lastGamma = e.gamma || 0;
@@ -761,25 +775,22 @@ window.addEventListener('devicemotion', e => {
             let pitchRate = (e.rotationRate.beta || 0) * (180 / Math.PI);
             let yawRate   = -(e.rotationRate.gamma || 0) * (180 / Math.PI);   // ← YAW REVERSED (as you asked)
             
-            // Deadzone for noise, but still allow tiny fine-tuning
+            // Deadzone for noise — pitch holds position, yaw accumulates freely
             if (Math.abs(pitchRate) > RATE_DEADZONE) {
                 relativeTilt.p += pitchRate * dt * GYRO_PITCH_GAIN;
-            } else {
-                relativeTilt.p *= 0.88;   // gentle return-to-center
             }
-            
+            // No auto-level for pitch: holds wherever you point it
+
             if (Math.abs(yawRate) > RATE_DEADZONE) {
                 relativeTilt.y += yawRate * dt * GYRO_YAW_GAIN;
-            } else {
-                relativeTilt.y *= 0.88;
             }
-            
-            // LIGHT SPRING + WIDER CLAMP — this kills the one-sided slowdown forever
-            relativeTilt.p *= 0.935;   // fights bias every frame
-            relativeTilt.y *= 0.935;
-            
-            relativeTilt.p = Math.max(-95, Math.min(95, relativeTilt.p));   // much wider, no saturation
-            relativeTilt.y = Math.max(-95, Math.min(95, relativeTilt.y));
+            // No yaw decay: accumulates freely for full 360° continuous rotation
+
+            // Pitch clamped to ~85° up/down — ship can't flip over
+            relativeTilt.p = Math.max(-95, Math.min(95, relativeTilt.p));
+            // Yaw: wrap so the number stays sane but never stops spinning
+            if (relativeTilt.y > 180) relativeTilt.y -= 360;
+            if (relativeTilt.y < -180) relativeTilt.y += 360;
         }
         lastMotionTime = now;
     }
