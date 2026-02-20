@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.8.7</title>
+    <title>Star Stream 3D - v4.8.8</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.8.7</div>
+    <div id="version">v4.8.8</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -342,15 +342,18 @@
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
                 // --- PITCH-AWARE YAW RATE CAP ---
-                // At high pitch the yaw orbit shrinks (cos of pitch angle).
-                // We cap yaw to a fixed rotations/second so the apparent spin
-                // rate stays the same regardless of how steeply the nose is raised.
-                // Cap is applied here where dt is available, not in the gyro handler.
+                // currentRotationVel.y is a per-frame radian value (max ~0.03 from applyCurve).
+                // At high pitch the yaw orbit shrinks by cos(pitchAngle), so the same
+                // per-frame radians produces a much faster apparent spin near the poles.
+                // We scale the cap by orbitRadius so apparent spin rate stays constant
+                // regardless of pitch. No dt needed — units are already per-frame.
                 const shipForwardForCap = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
                 const pitchAngleForCap = Math.asin(Math.max(-1, Math.min(1, shipForwardForCap.y)));
-                const orbitRadius = Math.max(0.08, Math.cos(pitchAngleForCap)); // never goes fully to zero
-                const MAX_ROTATIONS_PER_SECOND = 0.4; // tune: 0.4 = one full spin every 2.5 seconds at equator
-                const maxYawVel = MAX_ROTATIONS_PER_SECOND * Math.PI * 2 * orbitRadius * dt;
+                const orbitRadius = Math.max(0.08, Math.cos(pitchAngleForCap)); // never fully zero
+                // MAX_YAW_PER_FRAME: at flat pitch this is the ceiling (tune to taste).
+                // 0.03 = current uncapped max from YAW_SENSITIVITY, so start just below that.
+                const MAX_YAW_PER_FRAME = CONFIG.YAW_SENSITIVITY; // same as applyCurve's ceiling
+                const maxYawVel = MAX_YAW_PER_FRAME * orbitRadius;
                 currentRotationVel.y = Math.max(-maxYawVel, Math.min(maxYawVel, currentRotationVel.y));
                 // --- END YAW CAP ---
 
