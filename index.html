@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.7</title>
+    <title>Star Stream 3D - v4.9.8</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.7</div>
+    <div id="version">v4.9.8</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -532,17 +532,24 @@
 
         function handleLocalStars() {
             if(!localStars || !ship) return;
-            // Compute how much the ship moved this frame and shift stars the opposite way
             const delta = new THREE.Vector3().subVectors(ship.position, lastShipPos);
             lastShipPos.copy(ship.position);
-            const positions = localStars.geometry.attributes.position.array; const range = CONFIG.LOCAL_STAR_RANGE;
+            const positions = localStars.geometry.attributes.position.array;
+            const range = CONFIG.LOCAL_STAR_RANGE;
+            const half = range / 2;
+            const sx = ship.position.x, sy = ship.position.y, sz = ship.position.z;
             for(let i=0; i<positions.length; i+=3) {
+                // move stars opposite to ship travel
                 positions[i]   -= delta.x;
                 positions[i+1] -= delta.y;
                 positions[i+2] -= delta.z;
-                if(positions[i+2] > range/2) positions[i+2] -= range; if(positions[i+2] < -range/2) positions[i+2] += range;
-                if(positions[i] > range/2) positions[i] -= range; if(positions[i] < -range/2) positions[i] += range;
-                if(positions[i+1] > range/2) positions[i+1] -= range; if(positions[i+1] < -range/2) positions[i+1] += range;
+                // wrap relative to ship so stars always surround the ship
+                if(positions[i]   - sx >  half) positions[i]   -= range;
+                if(positions[i]   - sx < -half) positions[i]   += range;
+                if(positions[i+1] - sy >  half) positions[i+1] -= range;
+                if(positions[i+1] - sy < -half) positions[i+1] += range;
+                if(positions[i+2] - sz >  half) positions[i+2] -= range;
+                if(positions[i+2] - sz < -half) positions[i+2] += range;
             }
             localStars.geometry.attributes.position.needsUpdate = true;
         }
