@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.4</title>
+    <title>Star Stream 3D - v4.9.5</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.4</div>
+    <div id="version">v4.9.5</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -428,10 +428,7 @@
                     else { t.material.color.setHex(0xff00ff); t.material.emissive.setHex(0x440044); }
                 }
             });
-                if (debugActive) { 
-					drawGraph(); 
-					updateNumbers(relativeTilt.p, relativeTilt.y, currentRotationVel.p, currentRotationVel.y); 
-				}
+
 			
             handleBullets(); renderer.render(scene, camera);
         }
@@ -639,17 +636,8 @@
     }
     // No yaw anti-drift: accumulates for unlimited rotation
     
-    if (debugActive) {
-        lastBeta = e.beta || 0; lastGamma = e.gamma || 0;
-        history.beta.push(lastBeta); history.gamma.push(lastGamma);
-        history.pDiff.push(pDiff); history.yDiff.push(yDiff);
-        history.pitchVel.push(currentRotationVel.p); history.yawVel.push(currentRotationVel.y);
-        history.gravX.push(accGravity.x * 25);
-        history.gravY.push(accGravity.y * 25);
-        history.gravZ.push(accGravity.z * 25);
-        if (history.beta.length > MAX_HISTORY) Object.keys(history).forEach(k => history[k].shift());
-    }
 }
+
 
         function displayEndScreen() {
             let topScores = JSON.parse(localStorage.getItem('starStreamHighScores')) || [0, 0, 0, 0];
@@ -713,69 +701,19 @@
         
 		document.getElementById('zeroBtn').addEventListener('touchstart', (e) => { 
 			e.preventDefault(); 
-			relativeTilt = { p: 0, y: 0 };   // true center reset in ANY grip
-			isInitialized = false;
-			zeroTimer = setTimeout(toggleDebug, 650);
+			relativeTilt = { p: 0, y: 0 };
 		}, {passive: false});
     
-	// ==================== FULL-SCREEN SENSOR DEBUG OVERLAY (PHONE-FIXED) ====================
-// ==================== SENSOR DEBUG v2 - FIXED (rolling + full gravity) ====================
-let debugActive = false;
-const debugOverlay = document.getElementById('debugOverlay');
-const debugGraph = document.getElementById('debugGraph');
-const debugCtx = debugGraph.getContext('2d');
-const debugNumbers = document.getElementById('debugNumbers');
-const debugClose = document.getElementById('debugClose');
+	</script>
 
-let history = { beta: [], gamma: [], pDiff: [], yDiff: [], pitchVel: [], yawVel: [], gravX: [], gravY: [], gravZ: [] };
-let lastBeta = 0, lastGamma = 0;
-let accGravity = {x:0, y:0, z:0};
-let screenAngle = 0;
-
-const MAX_HISTORY = 950;   // fixed rolling buffer → no more squeezing, data scrolls off left
-
-function toggleDebug() {
-    debugActive = !debugActive;
-    debugOverlay.style.display = debugActive ? 'block' : 'none';
-    if (debugActive) {
-        resizeCanvas();
-        history = { beta: [], gamma: [], pDiff: [], yDiff: [], pitchVel: [], yawVel: [], gravX: [], gravY: [], gravZ: [] };
-    }
-}
-
-function resizeCanvas() {
-    const w = Math.floor(window.innerWidth * 0.96);
-    const h = Math.floor(window.innerHeight * 0.55);
-    debugGraph.width = w;
-    debugGraph.height = h;
-}
-
-const zeroBtn = document.getElementById('zeroBtn');
-let zeroTimer = null;
-
-zeroBtn.addEventListener('touchstart', (e) => { 
-    e.preventDefault(); 
-    relativeTilt = { p: 0, y: 0 };   // instant gyro reset
-    isInitialized = false;
-    
-    zeroTimer = setTimeout(toggleDebug, 650); 
-}, {passive: false});
-
-zeroBtn.addEventListener('touchend', () => clearTimeout(zeroTimer));
-
-debugClose.addEventListener('click', toggleDebug);
-debugOverlay.addEventListener('touchstart', (e) => { if (e.target.id === 'debugOverlay') toggleDebug(); });
-
+<script>
 // === GYRO SENSITIVITY TUNER (v4.8.1) ===
-// === GYRO TUNER v4.7.7 — fixed yaw symmetry + fine control restored ===
 const GYRO_PITCH_GAIN = 0.05;
 const GYRO_YAW_GAIN   = 0.03;
 
 const RATE_DEADZONE = 2.5;   // lowered so small fine-tuning tilts still work
 
 window.addEventListener('devicemotion', e => {
-    if (e.accelerationIncludingGravity) accGravity = e.accelerationIncludingGravity;
-    
     if (e.rotationRate && gameActive) {
         currentRotationRate = e.rotationRate;
         
@@ -807,92 +745,6 @@ window.addEventListener('devicemotion', e => {
     }
 });
 
-setInterval(() => { if (screen.orientation) screenAngle = screen.orientation.angle; }, 500);
-
-// ==================== ROLLING GRAPH (no squeezing) ====================
-function drawGraph() {
-    if (!debugActive) return;
-    const w = debugGraph.width, h = debugGraph.height;
-    debugCtx.fillStyle = '#000'; debugCtx.fillRect(0,0,w,h);
-
-    // grid
-    debugCtx.strokeStyle = 'rgba(0,255,100,0.15)';
-    for (let i=1; i<10; i++) {
-        const y = h*i/10; debugCtx.beginPath(); debugCtx.moveTo(0,y); debugCtx.lineTo(w,y); debugCtx.stroke();
-    }
-
-    const center = h*0.5;
-    const keys = ['beta','gamma','pDiff','yDiff','pitchVel','yawVel','gravX','gravY','gravZ'];
-    const colors = ['#4488ff','#ffaa00','#00ff88','#ffff44','#ff44ff','#00ffff','#ff6666','#ff2222','#aa0000'];
-    const scales = [2.8, 2.8, 2.8, 2.8, 68, 68, 25, 25, 25]; // last three = gravity scaling
-
-    debugCtx.lineWidth = 3.2;
-    keys.forEach((k,i) => {
-        if (history[k].length < 2) return;
-        debugCtx.strokeStyle = colors[i];
-        debugCtx.shadowBlur = 14; debugCtx.shadowColor = colors[i];
-        debugCtx.beginPath();
-        history[k].forEach((v, idx) => {
-            const x = idx * (w / (history[k].length - 1));
-            let scaled = center - v * scales[i];
-            scaled = Math.max(25, Math.min(h-25, scaled));
-            idx===0 ? debugCtx.moveTo(x,scaled) : debugCtx.lineTo(x,scaled);
-        });
-        debugCtx.stroke();
-        debugCtx.shadowBlur = 0;
-    });
-
-    // zero line
-    debugCtx.strokeStyle = 'rgba(255,255,255,0.45)'; debugCtx.lineWidth = 1.8;
-    debugCtx.beginPath(); debugCtx.moveTo(0,center); debugCtx.lineTo(w,center); debugCtx.stroke();
-
-    // legend
-    debugCtx.font = '14px monospace';
-    debugCtx.fillStyle = '#fff';
-    const legend = [
-        'BLUE raw β', 'ORANGE raw γ', 'GREEN pDiff', 'YELLOW yDiff',
-        'MAGENTA pitchVel', 'CYAN yawVel',
-        'LT-RED gravX', 'RED gravY', 'DK-RED gravZ'
-    ];
-    legend.forEach((txt,i) => debugCtx.fillText(txt, 28, 38 + i*23));
-}
-
-// ==================== NUMBERS ====================
-function updateNumbers(pD=0, yD=0, pVel=0, yVel=0) {
-    if (!debugActive) return;
-    const gMag = Math.hypot(accGravity.x, accGravity.y, accGravity.z).toFixed(1);
-    debugNumbers.innerHTML = `
-        <strong>RAW</strong><br>
-        β: <span style="color:#4488ff">${lastBeta.toFixed(1)}°</span> (zero ${phoneZero.beta.toFixed(1)}°)<br>
-        γ: <span style="color:#ffaa00">${lastGamma.toFixed(1)}°</span> (zero ${phoneZero.gamma.toFixed(1)}°)<br><br>
-        
-        <strong>CALCULATED</strong><br>
-        pDiff: <span style="color:#00ff88">${pD.toFixed(2)}°</span> yDiff: <span style="color:#ffff44">${yD.toFixed(2)}°</span><br>
-        pitchVel: <span style="color:#ff44ff">${pVel.toFixed(3)}</span> yawVel: <span style="color:#00ffff">${yVel.toFixed(3)}</span><br><br>
-        
-        <strong>GRAVITY (m/s²) — now all 3 axes</strong><br>
-        X: <span style="color:#ff6666">${accGravity.x.toFixed(2)}</span> 
-        Y: <span style="color:#ff2222">${accGravity.y.toFixed(2)}</span> 
-        Z: <span style="color:#aa0000">${accGravity.z.toFixed(2)}</span><br>
-        magnitude: ${gMag} screen: ${screenAngle}°
-    `;
-}
-
-// ====================== HOOKS (already in place) ======================
-// onDeviceMove hook and animate hook stay exactly as you added them earlier
-// ====================== END OF DEBUG CODE ======================
-	
-	</script>
-	      <!-- SENSOR DEBUG v2 - numbers on top, rolling graph, full gravity -->
-    <div id="debugOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.97);z-index:2000;color:#0ff;font-family:monospace;overflow:hidden;">
-        <div style="position:absolute;top:12px;left:20px;font-size:22px;color:#0f0;">📈 SENSOR DEBUG v2 - FULL SCREEN</div>
-        <div id="debugClose" style="position:absolute;top:12px;right:25px;font-size:36px;color:#ffaa00;cursor:pointer;">✕</div>
-        
-        <!-- NUMBERS PANEL — moved to TOP so you can always see it -->
-        <div id="debugNumbers" style="position:absolute;top:58px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.92);padding:18px 26px;border:3px solid #0ff;border-radius:12px;font-size:16px;line-height:1.75;width:92%;max-width:780px;text-align:left;box-shadow:0 0 25px rgba(0,255,255,0.6);">
-        </div>
-        
-        <canvas id="debugGraph" width="1280" height="520" style="position:absolute;top:215px;left:50%;transform:translateX(-50%);border:3px solid #0a0;background:#000;"></canvas>
-    </div>
+</script>
 </body>
 </html>
