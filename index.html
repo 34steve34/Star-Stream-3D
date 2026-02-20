@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.3</title>
+    <title>Star Stream 3D - v4.9.4</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.3</div>
+    <div id="version">v4.9.4</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -203,7 +203,7 @@
 
         const CONFIG = {
             MAX_VELOCITY: 1.5, DRIFT_INERTIA: 0.95, ACCEL_FORCE: 0.08, BULLET_SPEED: 9,
-            PITCH_SENSITIVITY: 0.035, YAW_SENSITIVITY: 0.03, EXPONENT: 1.6, DEADZONE: 1.2,
+            PITCH_SENSITIVITY: 0.02, YAW_SENSITIVITY: 0.018, EXPONENT: 1.6, DEADZONE: 1.2,
             SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 800,
             CAMERA_RADIUS: 80, MISSION_TIME: 180, BASE_FOV: 75, MAX_FOV_BOOST: 18,
             FOV_SMOOTHING: 0.03, SCOPE_RANGE: 2000, SCOPE_FOV: 30, SCOPE_FORWARD_OFFSET: 8,
@@ -630,7 +630,7 @@
     
     const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
     
-    currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+    currentRotationVel.p = -applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
     currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
     
     // Very gentle pitch anti-drift only when nearly neutral — yaw holds freely
