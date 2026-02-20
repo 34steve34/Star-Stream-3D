@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.2</title>
+    <title>Star Stream 3D - v4.9.3</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.2</div>
+    <div id="version">v4.9.3</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -219,6 +219,7 @@
         let phoneZero = { beta: 0, gamma: 0 }, currentRotationVel = { p: 0, y: 0 };
         let isInitialized = false, isThrusting = false, gameActive = false, pendingShot = false;
         let velocityVec = new THREE.Vector3(0, 0, 0);
+        let lastShipPos = new THREE.Vector3();
         let score = 0, wave = 1, targetsInWave = 12, timeLeft = CONFIG.MISSION_TIME;
         let shakeDuration = 0;
         let activeScopeBullet = null;
@@ -534,9 +535,14 @@
 
         function handleLocalStars() {
             if(!localStars || !ship) return;
-            localStars.position.copy(ship.position);
+            // Compute how much the ship moved this frame and shift stars the opposite way
+            const delta = new THREE.Vector3().subVectors(ship.position, lastShipPos);
+            lastShipPos.copy(ship.position);
             const positions = localStars.geometry.attributes.position.array; const range = CONFIG.LOCAL_STAR_RANGE;
             for(let i=0; i<positions.length; i+=3) {
+                positions[i]   -= delta.x;
+                positions[i+1] -= delta.y;
+                positions[i+2] -= delta.z;
                 if(positions[i+2] > range/2) positions[i+2] -= range; if(positions[i+2] < -range/2) positions[i+2] += range;
                 if(positions[i] > range/2) positions[i] -= range; if(positions[i] < -range/2) positions[i] += range;
                 if(positions[i+1] > range/2) positions[i+1] -= range; if(positions[i+1] < -range/2) positions[i+1] += range;
@@ -624,7 +630,7 @@
     
     const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
     
-    currentRotationVel.p = -applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+    currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
     currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
     
     // Very gentle pitch anti-drift only when nearly neutral — yaw holds freely
@@ -687,6 +693,7 @@
             
             new GLTFLoader().load('./assets/ship.glb', (gltf) => {
                 ship = gltf.scene; ship.scale.setScalar(3.0); ship.position.set(0, 0, -100); ship.rotation.set(0, Math.PI, 0);
+                lastShipPos.copy(ship.position);
                 engineBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff7700, transparent: true, opacity: 0.8 }));
                 engineBeam.position.set(0, 0, -6.5); engineBeam.rotation.x = Math.PI / 2; engineBeam.scale.set(0,0,0);
                 engineLight = new THREE.PointLight(0xff7700, 0, 50); engineLight.position.set(0, 0, -2);
