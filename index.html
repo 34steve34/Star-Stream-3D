@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.0</title>
+    <title>Star Stream 3D - v4.9.1</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.0</div>
+    <div id="version">v4.9.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -338,7 +338,6 @@
             const dt = clock.getDelta();
             
             if (ship && isInitialized) {
-                const shipRight = new THREE.Vector3(1, 0, 0).applyQuaternion(ship.quaternion);
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
                 // --- PITCH-AWARE YAW RATE CAP ---
@@ -359,6 +358,8 @@
 
                 ship.rotateOnWorldAxis(camUp, -currentRotationVel.y);
                 
+                // Derive shipRight AFTER yaw so pitch axis is fresh and orthogonal
+                const shipRight = new THREE.Vector3(1, 0, 0).applyQuaternion(ship.quaternion);
                 const shipForward = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
                 const currentPitchAngle = Math.asin(Math.max(-1, Math.min(1, shipForward.y)));
                 const MAX_PITCH = Math.PI * 0.47;
@@ -623,7 +624,7 @@
     
     const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
     
-    currentRotationVel.p = -applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
+    currentRotationVel.p = applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
     currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
     
     // Very gentle pitch anti-drift only when nearly neutral — yaw holds freely
