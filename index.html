@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v5.1.0</title>
+    <title>Star Stream 3D - v5.1.1</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v5.1.0</div>
+    <div id="version">v5.1.1</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -145,11 +145,12 @@
         <button id="startBtn">START MISSION</button>
     </div>
 
+    <div id="indicator-container"></div>
     <div id="pilotWarnings" style="
         position: absolute; top: 45px; left: 10px; z-index: 30;
         display: none; pointer-events: none;
         font-family: monospace; font-size: 11px;
-        display: flex; flex-direction: column; gap: 3px;
+        flex-direction: column; gap: 3px;
     "></div>
 
     <canvas id="scopeCanvas"></canvas>
