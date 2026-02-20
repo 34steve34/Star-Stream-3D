@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v5.0.1</title>
+    <title>Star Stream 3D - v5.1.0</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v5.0.1</div>
+    <div id="version">v5.1.0</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -145,7 +145,13 @@
         <button id="startBtn">START MISSION</button>
     </div>
 
-    <div id="indicator-container"></div>
+    <div id="pilotWarnings" style="
+        position: absolute; top: 45px; left: 10px; z-index: 30;
+        display: none; pointer-events: none;
+        font-family: monospace; font-size: 11px;
+        display: flex; flex-direction: column; gap: 3px;
+    "></div>
+
     <canvas id="scopeCanvas"></canvas>
     <canvas id="scopeCrosshair" width="220" height="220"></canvas>
     <div id="scopeReticle"></div>
@@ -204,7 +210,7 @@
         const CONFIG = {
             MAX_VELOCITY: 1.5, DRIFT_INERTIA: 0.95, ACCEL_FORCE: 0.08, BULLET_SPEED: 9,
             PITCH_SENSITIVITY: 0.02, YAW_SENSITIVITY: 0.018, EXPONENT: 1.6, DEADZONE: 1.2,
-            SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 800,
+            SECTOR_SIZE: 3500, LOCAL_STAR_COUNT: 800, LOCAL_STAR_RANGE: 1800,
             CAMERA_RADIUS: 80, MISSION_TIME: 180, BASE_FOV: 75, MAX_FOV_BOOST: 18,
             FOV_SMOOTHING: 0.03, SCOPE_RANGE: 2000, SCOPE_FOV: 30, SCOPE_FORWARD_OFFSET: 8,
             SCOPE_HIT_DISTANCE: 150, EXPLOSION_SHARDS: 20, SHAKE_INTENSITY: 2.0
@@ -225,6 +231,9 @@
         let activeScopeBullet = null;
         let popTimeout = null;
         let currentBestShot = 0; // Tracks the best shot for the current game
+        // === PILOT WARNINGS ===
+        let pitchWarnTimer = 0;          // seconds relativeTilt.p has been extreme
+        let gyroClampTimer = 0;          // seconds relativeTilt.p has been pegged at clamp
 		// === GYRO INTEGRATION v4.7.7 (posture-independent tilt) ===
 		let relativeTilt = { p: 0, y: 0 };
 		let lastMotionTime = 0;
@@ -333,6 +342,82 @@
             ctx.beginPath(); ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2); ctx.fill();
         }
 
+        // ====================== PILOT WARNINGS ======================
+        const WARN_PROXIMITY  = 200;   // units — target "too close"
+        const WARN_PITCH_DEG  = 70;    // |relativeTilt.p| threshold
+        const WARN_PITCH_SECS = 2;     // seconds before PITCH WARNING fires
+        const WARN_LOW_TIME   = 30;    // seconds remaining
+        const WARN_BULLETS    = 8;     // bullets in flight
+
+        function updatePilotWarnings(dt) {
+            const panel = document.getElementById('pilotWarnings');
+            if (!gameActive || !ship) { panel.style.display = 'none'; return; }
+
+            const warnings = [];
+
+            // PITCH WARNING — sustained extreme tilt
+            if (Math.abs(relativeTilt.p) > WARN_PITCH_DEG) {
+                pitchWarnTimer += dt;
+                if (pitchWarnTimer >= WARN_PITCH_SECS)
+                    warnings.push({ text: '⚠ PITCH EXTREME', color: '#ffaa00' });
+            } else {
+                pitchWarnTimer = 0;
+            }
+
+            // ZERO NEEDED — gyro pegged at clamp values (drift has accumulated)
+            if (Math.abs(relativeTilt.p) >= 93) {
+                gyroClampTimer += dt;
+                if (gyroClampTimer >= 1.5)
+                    warnings.push({ text: '⚠ ZERO NEEDED', color: '#ff4400' });
+            } else {
+                gyroClampTimer = 0;
+            }
+
+            // PROXIMITY ALERT — any target too close
+            if (ship) {
+                for (let t of targets) {
+                    if (ship.position.distanceTo(t.position) < WARN_PROXIMITY) {
+                        warnings.push({ text: '⚠ PROXIMITY ALERT', color: '#ff0000' });
+                        break;
+                    }
+                }
+            }
+
+            // MISSILE LOCK / TARGET CLOSING — target closing fast (dot product with velocity)
+            if (ship && velocityVec.length() > 0.1) {
+                const shipFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(ship.quaternion);
+                for (let t of targets) {
+                    const toTarget = t.position.clone().sub(ship.position).normalize();
+                    const dot = toTarget.dot(shipFwd);
+                    const dist = ship.position.distanceTo(t.position);
+                    if (dot > 0.85 && dist < 800) {
+                        warnings.push({ text: '⚠ TARGET CLOSING', color: '#ffaa00' });
+                        break;
+                    }
+                }
+            }
+
+            // LOW TIME — flash under 30s
+            if (timeLeft <= WARN_LOW_TIME && timeLeft > 0) {
+                if (Math.floor(Date.now() / 500) % 2 === 0)   // 1Hz blink
+                    warnings.push({ text: '⚠ LOW TIME', color: '#ff0000' });
+            }
+
+            // BULLET SATURATION
+            if (bullets.length >= WARN_BULLETS)
+                warnings.push({ text: '⚠ BULLET SATURATION', color: '#ffaa00' });
+
+            // Render
+            if (warnings.length === 0) {
+                panel.style.display = 'none';
+            } else {
+                panel.style.display = 'flex';
+                panel.innerHTML = warnings.map(w =>
+                    `<div style="color:${w.color};background:rgba(0,0,0,0.6);padding:2px 6px;border-left:2px solid ${w.color};">${w.text}</div>`
+                ).join('');
+            }
+        }
+
        function animate() {
             if (!gameActive) return;
             requestAnimationFrame(animate);
@@ -383,7 +468,7 @@
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, CONFIG.FOV_SMOOTHING);
                 camera.updateProjectionMatrix();
                 
-                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions();
+                handleStarWrap(); handleLocalStars(); updateIndicators(); updateScope(); updateExplosions(); updatePilotWarnings(dt);
                 
                 const dist = ship.position.distanceTo(camera.position);
                 if (dist > CONFIG.CAMERA_RADIUS) {
@@ -556,8 +641,18 @@
         }
 
         function initLocalStars() {
-            const geo = new THREE.BufferGeometry(); const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
-            for(let i=0; i<CONFIG.LOCAL_STAR_COUNT * 3; i++) pos[i] = (Math.random()-0.5) * CONFIG.LOCAL_STAR_RANGE;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(CONFIG.LOCAL_STAR_COUNT * 3);
+            const half = CONFIG.LOCAL_STAR_RANGE / 2;
+            for (let i = 0; i < CONFIG.LOCAL_STAR_COUNT; i++) {
+                // Forward bias: 60% of stars skewed toward +Z (ahead of ship)
+                const forwardBias = (i < CONFIG.LOCAL_STAR_COUNT * 0.6)
+                    ? Math.random() * half          // 0 → +half (ahead)
+                    : (Math.random() - 1) * half;   // -half → 0 (behind)
+                pos[i * 3]     = (Math.random() - 0.5) * CONFIG.LOCAL_STAR_RANGE;
+                pos[i * 3 + 1] = (Math.random() - 0.5) * CONFIG.LOCAL_STAR_RANGE;
+                pos[i * 3 + 2] = forwardBias;
+            }
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
             localStars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.7 }));
             scene.add(localStars);
