@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Star Stream 3D - v4.9.5</title>
+    <title>Star Stream 3D - v4.9.6</title>
 	<link rel="manifest" href="manifest.json">
     
     <style>
@@ -108,7 +108,7 @@
     </style>
 </head>
 <body>
-    <div id="version">v4.9.5</div>
+    <div id="version">v4.9.6</div>
     <button id="zeroBtn">ZERO</button>
     <button id="thrustBtn">THRUST</button>
     
@@ -339,6 +339,16 @@
             const dt = clock.getDelta();
             
             if (ship && isInitialized) {
+                // Convert relativeTilt (from gyro) to rotation velocities
+                const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
+                currentRotationVel.p = -applyCurve(relativeTilt.p, CONFIG.PITCH_SENSITIVITY);
+                currentRotationVel.y = applyCurve(relativeTilt.y, CONFIG.YAW_SENSITIVITY);
+                
+                // Very gentle pitch anti-drift only when nearly neutral
+                if (Math.abs(relativeTilt.p) < 5) {
+                    relativeTilt.p *= 0.97;
+                }
+                
                 const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
 
                 // --- PITCH-AWARE YAW RATE CAP ---
@@ -618,25 +628,7 @@
             } else { scopeCanvas.style.display = 'none'; document.getElementById('scopeCrosshair').style.display = 'none'; }
         } 
 
-      // ====================== HOOKS (replace your old ones) ======================
-	function onDeviceMove(e) {
-    if (!gameActive) return;
-    
-    let pDiff = relativeTilt.p;
-    let yDiff = relativeTilt.y;
-    
-    const applyCurve = (val, sens) => (Math.abs(val) < CONFIG.DEADZONE) ? 0 : Math.sign(val) * Math.pow(Math.min(Math.abs(val)/35, 1), CONFIG.EXPONENT) * sens;
-    
-    currentRotationVel.p = -applyCurve(pDiff, CONFIG.PITCH_SENSITIVITY);
-    currentRotationVel.y = applyCurve(yDiff, CONFIG.YAW_SENSITIVITY);
-    
-    // Very gentle pitch anti-drift only when nearly neutral — yaw holds freely
-    if (Math.abs(pDiff) < 5) {
-        relativeTilt.p *= 0.97;
-    }
-    // No yaw anti-drift: accumulates for unlimited rotation
-    
-}
+      // ====================== HOOKS ======================
 
 
         function displayEndScreen() {
@@ -674,7 +666,7 @@
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
             }
-            window.addEventListener('deviceorientation', onDeviceMove); 
+            // devicemotion listener is registered globally, no need for deviceorientation
             gameActive = true; 
 			isInitialized = true;
             init();
